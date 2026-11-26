@@ -3,9 +3,11 @@
 > Based on the *VWL Bootstrap Work Ledger v1.0* specification.
 
 [![CI](https://github.com/horia-ai/vwl/actions/workflows/ci.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/ci.yml)
+[![IaC Check](https://github.com/horia-ai/vwl/actions/workflows/iac.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/iac.yml)
 [![Mutation Testing Gate](https://github.com/horia-ai/vwl/actions/workflows/mutation-testing.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/mutation-testing.yml)
 [![Security & Secrets](https://github.com/horia-ai/vwl/actions/workflows/security.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/security.yml)
 [![GitHub Pages](https://github.com/horia-ai/vwl/actions/workflows/gh-pages.yml/badge.svg)](https://horia-ai.github.io/vwl/)
+[![Project Board](https://img.shields.io/badge/GitHub%20Project-VWL%20Board-blue)](https://github.com/orgs/horia-ai/projects/1)
 
 ---
 
