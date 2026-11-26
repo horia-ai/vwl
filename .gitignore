@@ -1,0 +1,35 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Node & Package Managers
+node_modules/
+dist/
+build/
+.npm/
+package-lock.json
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.token
+
+# Stryker and test coverage
+.stryker-tmp/
+reports/
+coverage/
+
+# OS and IDE files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Temporary Worktrees and Test Repos
+/tmp-vwl-*
+/worktrees/

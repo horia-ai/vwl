@@ -1,0 +1,24 @@
+work_unit: WU-G0-001
+base: "unborn"
+commit: "candidate-001"
+status: candidate
+
+specification:
+  hypothesis: "VWL can remain a small local executable with no service/database dependency."
+  objective: "Create minimal Rust workspace and vwl CLI shell."
+  dependencies: []
+  acceptance:
+    - "cargo test passes"
+    - "cargo clippy --all-targets --all-features -- -D warnings zero warnings"
+    - "vwl --help displays commands"
+    - "Strictly zero network service, zero database dependencies"
+
+verification:
+  verifier: independent-session
+  commands:
+    - "cargo test"
+    - "cargo clippy --all-targets --all-features -- -D warnings"
+    - "cargo run -p vwl-cli -- --help"
+  verdict: pass
+
+decision: confirmed

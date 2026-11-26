@@ -1,0 +1,16 @@
+title = "gitleaks config for VWL"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowed placeholder test tokens and mock credentials"
+regexes = [
+  '''ghp_mock[a-zA-Z0-9]{36}''',
+  '''sk_test_[a-zA-Z0-9]{24}''',
+  '''pk_test_[a-zA-Z0-9]{24}'''
+]
+paths = [
+  '''tests/.*''',
+  '''fixtures/.*'''
+]

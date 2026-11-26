@@ -1,0 +1,27 @@
+{
+  "name": "@vwl/stripe-mcp",
+  "version": "0.1.0",
+  "description": "Stripe MCP Server POC for VWL fiat onramp and webhook verification",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:mutate": "stryker run",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "stripe": "^14.14.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^8.2.0",
+    "@stryker-mutator/vitest-runner": "^8.2.0",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  }
+}

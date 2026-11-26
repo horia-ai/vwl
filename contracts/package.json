@@ -1,0 +1,12 @@
+{
+  "name": "@vwl/contracts",
+  "version": "0.1.0",
+  "description": "Smart contracts for VWL (Gate 7: NodeRegistry, ProjectRegistry, Escrow, VestingSettlement)",
+  "scripts": {
+    "test": "echo 'Contracts test placeholder for Gate 7'",
+    "build": "echo 'Contracts build placeholder'"
+  },
+  "devDependencies": {
+    "solhint": "^4.1.1"
+  }
+}

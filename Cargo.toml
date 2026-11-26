@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vwl-core",
+    "crates/vwl-cli",
+    "crates/vwl-tui"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Alex Trifan <trifan.alex.criss@gmail.com>"]
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+sha2 = "0.10"
+hex = "0.4"
+thiserror = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+tempfile = "3.8"
+ratatui = "0.26"
+crossterm = "0.27"

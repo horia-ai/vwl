@@ -1,0 +1,15 @@
+[package]
+name = "vwl-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vwl"
+path = "src/main.rs"
+
+[dependencies]
+vwl-core = { path = "../vwl-core" }
+clap = { workspace = true }
+serde_yaml = { workspace = true }

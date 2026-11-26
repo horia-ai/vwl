@@ -1,0 +1,19 @@
+{
+  "name": "vwl-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Virtual Work Ledger monorepo - Rust core, TypeScript MCP/agent harnesses, and Solidity contracts",
+  "workspaces": [
+    "packages/*",
+    "contracts"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "test:mutate": "npm run test:mutate --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

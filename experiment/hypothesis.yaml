@@ -1,0 +1,23 @@
+# VWL Global Hypotheses as specified in VWL Bootstrap Work Ledger v1.0
+global_hypotheses:
+  H-CORE:
+    statement: "Small Git-native Work Units, independently verified and recorded in a replayable ledger, can support asynchronous coding agents while preserving a reproducible canonical state."
+    falsification: "Any replay divergence, non-deterministic state derivation, or state loss on restart."
+  H-INDEPENDENCE:
+    statement: "A verifier with bounded independent context adds useful evidence beyond implementer self-checks."
+    falsification: "Verifier discovers 0 seeded bugs or requires implementer conversational context to evaluate work."
+  H-COMPOSITION:
+    statement: "Individually valid Work Units can be composed safely when effects are compatible, and incompatible effects are detected before canonicalization."
+    falsification: "Silent canonicalization of semantically conflicting changes."
+  H-PORTABILITY:
+    statement: "Node/project identity and evidence can be reconstructed without a central VWL server."
+    falsification: "Clean clone cannot reconstruct historical task and state derivation."
+  H-MARKET:
+    statement: "GitHub can serve as mutable discovery/collaboration while signed VWL objects and contracts remain authoritative."
+    falsification: "Manual GitHub tampering alters signed VWL authority or smart contract state."
+  H-REP:
+    statement: "Evidence-derived domain REP predicts future relevant outcomes better than simpler baselines."
+    falsification: "REP score demonstrates zero predictive lift over naive commit/WU counts."
+  H-ECON:
+    statement: "Project-funded, reserved, earned and vesting WORK can be accounted for deterministically without double allocation or discretionary post-hoc wage changes."
+    falsification: "WORK state conservation violation or double-spend of milestone reservations."

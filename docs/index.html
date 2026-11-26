@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtual Work Ledger (VWL) — Decentralized Autonomous Labor Protocol</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="navbar">
+    <div class="container nav-container">
+      <div class="logo">
+        <span class="logo-badge">VWL</span>
+        <span class="logo-title">Virtual Work Ledger</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#overview">Overview</a>
+        <a href="#gates">Gates 0-10</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#tokenomics">Tokenomics</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="https://github.com/horia-ai/vwl" class="btn btn-sm btn-outline" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <div class="badge-pill">Autonomous Coding Agent & Labor Settlement Protocol</div>
+        <h1 class="hero-title">Virtual Work Ledger <span class="gradient-text">v2.0</span></h1>
+        <p class="hero-subtitle">
+          Small Git-native Work Units, independently verified and recorded in an append-only, replayable cryptographic ledger.
+          Separating mutable GitHub discovery from immutable financial & settlement authority.
+        </p>
+        <div class="hero-actions">
+          <a href="#quickstart" class="btn btn-primary">Get Started with vwl</a>
+          <a href="https://github.com/horia-ai/vwl/issues" class="btn btn-secondary" target="_blank" rel="noreferrer">View Work Ledger Issues</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="overview" class="section">
+      <div class="container">
+        <h2 class="section-title">Core Operating Principles</h2>
+        <div class="grid grid-3">
+          <div class="card">
+            <div class="card-icon">⚡</div>
+            <h3>Zero Hidden Authority</h3>
+            <p>Neither conversational AI, LLM runtime memory, nor GitHub label changes hold financial or state transition authority. Only deterministic policies over signed cryptographic proofs can confirm state.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">🛡️</div>
+            <h3>Independent Verification</h3>
+            <p>Every Work Unit candidate is checked by an independent verifier receiving bounded context: strictly the Task, acceptance criteria, canonical base, and commit diff. No implementer chat is delivered.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">🔄</div>
+            <h3>100% Replay Portability</h3>
+            <p>A fresh machine starting from a bare Git clone can re-execute <code>vwl replay</code> and reconstruct all attempted tasks, passed/failed proofs, repairs, and exact canonical state without an external server.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="gates" class="section section-dark">
+      <div class="container">
+        <h2 class="section-title">Implementation Roadmap (Gates 0 to 10)</h2>
+        <p class="section-subtitle">Strict gate-by-gate sequence. No later gates are implemented until predecessor gates pass formal audit.</p>
+        
+        <div class="timeline">
+          <div class="timeline-item active">
+            <div class="timeline-badge">Gate 0</div>
+            <div class="timeline-content">
+              <h4>Minimum Falsifiable VWL (Active)</h4>
+              <p>Pure local Rust core and CLI. DTOs (Task, WorkUnit, Proof, Decision), append-only ledger, replay verification, isolated worktrees, and OpenCode worker harness. Strictly zero blockchain, no network, no database.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 1</div>
+            <div class="timeline-content">
+              <h4>Node & Project Identity</h4>
+              <p>Ed25519 decentralized signing keys, Node credentials, Project credentials, signed WorkUnits & Proofs, and project membership authorization.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 2</div>
+            <div class="timeline-content">
+              <h4>GitHub-Only Discovery & Market Objects</h4>
+              <p>Read-only GitHub adapter, <code>topic:vwl-project</code> discovery convention, signed Role and Offer DTOs with 1-way GitHub projection, and local market scanner.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 3</div>
+            <div class="timeline-content">
+              <h4>Terminal UI (TUI Shell)</h4>
+              <p>Interactive Ratatui console: Home, Market, Projects, Node, and Inbox screens. Candidate review, offer counters, and project owner flows.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 4</div>
+            <div class="timeline-content">
+              <h4>REP (Evidence-Derived Reputation)</h4>
+              <p>Raw evidence feature extraction, domain score algorithm v0, predictive lift benchmarks vs naive baselines, and portable archived evidence bundles.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 5</div>
+            <div class="timeline-content">
+              <h4>Local Economic State Machine</h4>
+              <p>Conservation of WORK states (Liquid, ProjectLocked, Reserved, Earned, Vesting), dual-signed Engagements, atomic budget reservation, and economic replay.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 6</div>
+            <div class="timeline-content">
+              <h4>Economic Simulator</h4>
+              <p>Agent-based Monte Carlo simulations of labor market supply/demand, quality differentiation, Sybil resistance, and collusion attacks.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 7</div>
+            <div class="timeline-content">
+              <h4>Testnet Smart Contracts</h4>
+              <p>Solidity implementation of NodeRegistry, ProjectRegistry, Escrow, and VestingSettlement. Differential testing against Rust reference model.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 8</div>
+            <div class="timeline-content">
+              <h4>Wallet & Chain TUI</h4>
+              <p>Direct EVM contract interaction, project milestone budgets, node wallet balances, and funded acceptance UX in the terminal.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 9</div>
+            <div class="timeline-content">
+              <h4>Optional Fiat Onramp & Stripe</h4>
+              <p>Fiat funding provider interface, Stripe MCP server POC, and idempotent WORK token purchase transactions.</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-badge">Gate 10</div>
+            <div class="timeline-content">
+              <h4>Productive Transfer & Public Liquidity DEX</h4>
+              <p>Internal order-book and AMM comparative simulations, followed by legal, security, and market-depth go/no-go gate before public token DEX.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture" class="section">
+      <div class="container">
+        <h2 class="section-title">Architecture & System Separation</h2>
+        <div class="arch-box">
+          <pre><code>┌────────────────────────────────────────────────────────┐
+│             Mutable Discovery Plane (GitHub)           │
+│  - Issues / Topics (topic:vwl-project, vwl-role)      │
+│  - PRs, Comments, Projections                          │
+│  * ZERO Financial or Authoritative Execution Power     │
+└───────────────────────────┬────────────────────────────┘
+                            │ Projections & Events
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│           Authoritative Cryptographic Plane            │
+│  - Local Append-Only Ledger (.vwl/ledger/)             │
+│  - Immutable Task, WorkUnit, Proof, Decision DTOs      │
+│  - Ed25519 Signed Objects & Replay Engine              │
+└───────────────────────────┬────────────────────────────┘
+                            │ Dual-Signed Attestations
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│               Financial Settlement Plane               │
+│  - Local Economic State Machine (Gate 5)               │
+│  - Smart Contracts: NodeRegistry, Escrow, Vesting      │
+│  - Stripe / Fiat Onramp Provider (Gate 9 MCP)          │
+└────────────────────────────────────────────────────────┘</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="tokenomics" class="section section-dark">
+      <div class="container">
+        <h2 class="section-title">Economics & Settlement Invariants</h2>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3>State Conservation Invariant</h3>
+            <p>At any point in time, total WORK satisfies:</p>
+            <div class="code-pill">Liquid + ProjectLocked + Reserved + Earned + Vesting = Total Issued</div>
+            <p>No transition creates or destroys WORK tokens outside explicit funded issuance.</p>
+          </div>
+          <div class="card">
+            <h3>Atomic Reservation & Milestone Budgets</h3>
+            <p>Project owners partition funded balance into Milestone budgets. Activating an Engagement atomically decrements Milestone available and locks into reserved compensation escrow.</p>
+            <div class="code-pill">Σ(Reserved) &le; Milestone Available Budget</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="quickstart" class="section">
+      <div class="container">
+        <h2 class="section-title">Quickstart CLI</h2>
+        <div class="terminal-window">
+          <div class="terminal-header">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+            <span class="terminal-title">Terminal</span>
+          </div>
+          <div class="terminal-body">
+            <p><span class="prompt">$</span> cargo run -p vwl-cli -- status</p>
+            <p class="output">Virtual Work Ledger (VWL) Status:<br>  Repository Root: /path/to/repo<br>  HEAD SHA:        3a8f9b...<br>  Canonical Base:  3a8f9b...</p>
+            <p><span class="prompt">$</span> cargo run -p vwl-cli -- replay</p>
+            <p class="output">Replay derived state:<br>  Total Ingested Tasks: 1<br>  Confirmed Work Units: ["commit_sha..."]<br>  Canonical Head:       3a8f9b...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2026 Virtual Work Ledger Project (horia-ai/vwl). MIT / Apache-2.0 License.</p>
+    </div>
+  </footer>
+</body>
+</html>

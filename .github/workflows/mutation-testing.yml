@@ -1,0 +1,36 @@
+name: Mutation Testing Gate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stryker-mutation-gate:
+    name: Stryker Mutation Testing (Threshold >= 80%)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Stryker Mutation Testing in stripe-mcp
+        working-directory: packages/stripe-mcp
+        run: |
+          npm run test:mutate || {
+            echo "::error::Stryker mutation testing failed or fell below the 80% threshold!"
+            exit 1
+          }
