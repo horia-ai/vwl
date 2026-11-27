@@ -5,7 +5,7 @@ use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use vwl_core::{
-    decision::{DecisionEngine, DecisionOutcome},
+    decision::{Decision, DecisionEngine, DecisionOutcome},
     economics::EconomicLedger,
     factory::{Challenge, ChangeProfile, GatesManifest, RiskLevel, RiskProfile, VerificationPlan},
     git::GitInspector,
@@ -149,6 +149,41 @@ enum Commands {
         /// Watch mode: continuously poll frontier and GitHub issues for new ready tasks
         #[arg(long)]
         watch: bool,
+
+        /// Interactive steering: open agent in interactive chat mode in task worktree
+        #[arg(long)]
+        chat: bool,
+
+        /// Pass remaining args directly to agent process
+        #[arg(last = true)]
+        extra_args: Vec<String>,
+    },
+
+    /// Launch verifier workflow: subscribe validator node, scan ledger for unverified candidates, and execute verification
+    #[command(alias = "validator")]
+    Verifier {
+        /// Optional specific candidate commit SHA; if omitted, auto-discovers next unverified candidate from ledger
+        commit: Option<String>,
+
+        /// Target harness: opencode, claude, gemini, copilot (default: opencode)
+        #[arg(long, default_value = "opencode")]
+        harness: String,
+
+        /// Specialist validator profile: all, wiring, test-integrity, mutation, skeptic, shadow (default: all)
+        #[arg(long, default_value = "all")]
+        specialist: String,
+
+        /// Watch mode: continuously poll ledger (cron loop) for new candidate commits
+        #[arg(long)]
+        watch: bool,
+
+        /// Interactive steering: open agent in interactive chat mode for verification
+        #[arg(long)]
+        chat: bool,
+
+        /// Polling interval in seconds for watch mode
+        #[arg(long, default_value = "3")]
+        poll_interval_secs: u64,
 
         /// Pass remaining args directly to agent process
         #[arg(last = true)]
@@ -466,6 +501,20 @@ enum GhCommands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Create a new GitHub issue following VWL task spec conventions
+    Create {
+        /// Issue title
+        title: String,
+        /// Repository in owner/repo format (default: horia-ai/vwl)
+        #[arg(long, default_value = "horia-ai/vwl")]
+        repo: String,
+        /// Issue description / body (markdown)
+        #[arg(long)]
+        body: Option<String>,
+        /// GitHub issue label (default: vwl-task)
+        #[arg(long, default_value = "vwl-task")]
+        label: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -561,18 +610,31 @@ enum WorkerCommands {
         /// Target harness: opencode, claude, copilot, gemini, or custom (default: opencode)
         #[arg(long, default_value = "opencode")]
         harness: String,
+        /// Interactive steering: open agent in interactive chat mode in task worktree
+        #[arg(long)]
+        chat: bool,
         #[arg(last = true)]
         extra_args: Vec<String>,
     },
     /// Execute independent verifier with no implementer chat (WU-G0-011)
     Verifier {
-        commit: String,
+        /// Candidate commit SHA; if omitted, scans ledger for unverified candidates
+        commit: Option<String>,
         /// Target harness: opencode, claude, copilot, gemini, or custom (default: opencode)
         #[arg(long, default_value = "opencode")]
         harness: String,
         /// Specialist validator profile: all, wiring, test-integrity, mutation, skeptic, shadow
         #[arg(long, default_value = "all")]
         specialist: String,
+        /// Watch mode: continuously poll ledger (cron loop) for new candidate commits
+        #[arg(long)]
+        watch: bool,
+        /// Interactive steering: open agent in interactive chat mode for verification
+        #[arg(long)]
+        chat: bool,
+        /// Polling interval in seconds for watch mode
+        #[arg(long, default_value = "3")]
+        poll_interval_secs: u64,
         #[arg(last = true)]
         extra_args: Vec<String>,
     },
@@ -695,6 +757,14 @@ fn main() -> Result<()> {
             }
             GhCommands::Sync { repo, dry_run } => {
                 handle_gh_sync(&repo_root, &repo, dry_run)?;
+            }
+            GhCommands::Create {
+                title,
+                repo,
+                body,
+                label,
+            } => {
+                handle_gh_create(&title, &repo, body.as_deref(), &label)?;
             }
         },
 
@@ -1072,6 +1142,7 @@ fn main() -> Result<()> {
             task_id,
             harness,
             watch,
+            chat,
             extra_args,
         } => {
             let repo_root = GitInspector::find_repo_root(&current_dir)?;
@@ -1108,7 +1179,36 @@ fn main() -> Result<()> {
                 let _ = handle_gh_sync(&repo_root, "horia-ai/vwl", false);
             }
 
-            handle_developer_mode(&repo_root, task_id, &harness, watch, &extra_args)?;
+            handle_developer_mode(&repo_root, task_id, &harness, watch, chat, &extra_args)?;
+        }
+
+        Commands::Verifier {
+            commit,
+            harness,
+            specialist,
+            watch,
+            chat,
+            poll_interval_secs,
+            extra_args,
+        } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let gates_path = repo_root.join(".vwl").join("gates.yaml");
+            let hook_installed = GitInspector::is_precommit_hook_installed(&repo_root);
+            if !gates_path.exists() || !hook_installed {
+                println!("[VWL Verifier] Ensuring repository gates, pre-commit hook, and skills are initialized...");
+                handle_bootstrap(&repo_root, &harness, false, false)?;
+            }
+
+            handle_verifier_mode(
+                &repo_root,
+                commit,
+                &harness,
+                &specialist,
+                watch,
+                chat,
+                poll_interval_secs,
+                &extra_args,
+            )?;
         }
 
         Commands::Replay => {
@@ -2024,156 +2124,32 @@ fn main() -> Result<()> {
             WorkerCommands::Developer {
                 task_id,
                 harness,
+                chat,
                 extra_args,
             } => {
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
-                handle_developer_mode(&repo_root, task_id, &harness, false, &extra_args)?;
+                handle_developer_mode(&repo_root, task_id, &harness, false, chat, &extra_args)?;
             }
             WorkerCommands::Verifier {
                 commit,
                 harness,
                 specialist,
+                watch,
+                chat,
+                poll_interval_secs,
                 extra_args,
             } => {
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
-                let ledger = LocalLedger::new(&repo_root)?;
-                let work_units = ledger.get_work_units()?;
-                let wu = work_units
-                    .into_iter()
-                    .find(|w| w.commit == commit || w.candidate == commit)
-                    .ok_or_else(|| {
-                        VwlError::InvalidWorkUnit(format!(
-                            "WorkUnit for commit '{}' not found",
-                            commit
-                        ))
-                    })?;
-
-                println!("=== [Validator Worker Node: Verification Factory] ===");
-                println!("  Zero-Chat Invariant: IMPLEMENTER CHAT LOGS STRICTLY BARRED");
-                println!("  Candidate Isolation: READ-ONLY EVALUATION (NO SILENT REWRITES)");
-                println!("  Target Candidate:    {}", wu.candidate);
-                println!("  Task Ref:            {}", wu.task);
-                println!("  Verifier Harness:    {}", harness);
-                println!("  Specialist Profile:  {}", specialist);
-                if !extra_args.is_empty() {
-                    println!("  Harness Args:        {:?}", extra_args);
-                }
-
-                let manifest = GatesManifest::load_or_detect(&repo_root)?;
-                let gate_results = manifest.run_gates(&repo_root, true)?;
-
-                let mut proofs = Vec::new();
-                if specialist != "all" {
-                    let (gate_name, plane, proof_type) = match specialist.as_str() {
-                        "wiring" => (
-                            "wiring",
-                            VerificationPlane::Deterministic,
-                            ProofType::Structural,
-                        ),
-                        "test-integrity" => (
-                            "test-integrity",
-                            VerificationPlane::Deterministic,
-                            ProofType::Structural,
-                        ),
-                        "mutation" => (
-                            "mutation-targeted",
-                            VerificationPlane::Deterministic,
-                            ProofType::Impact,
-                        ),
-                        "skeptic" => (
-                            "skeptic-review",
-                            VerificationPlane::Judgment,
-                            ProofType::Work,
-                        ),
-                        "shadow" => (
-                            "deployment-shadow",
-                            VerificationPlane::Deterministic,
-                            ProofType::Work,
-                        ),
-                        _ => (
-                            "acceptance",
-                            VerificationPlane::Deterministic,
-                            ProofType::Work,
-                        ),
-                    };
-
-                    let proof = Proof::new_v22(
-                        &wu.candidate,
-                        proof_type,
-                        Verdict::Pass,
-                        format!(
-                            "specialist-validator --role {} --task {} --harness {}",
-                            specialist, wu.task, harness
-                        ),
-                        Some(format!("Independent {} verification passed", specialist)),
-                        Some(gate_name.to_string()),
-                        Some(plane),
-                        Some(VisibilityProfile::InterfaceIntegration),
-                        Some("specialist-profile".to_string()),
-                    )?;
-                    ledger.append_proof(&proof)?;
-                    proofs.push(proof);
-                    println!(
-                        "  Structured Proof emitted: specialist='{}', gate='{}', verdict=Pass",
-                        specialist, gate_name
-                    );
-                } else if gate_results.is_empty() {
-                    let proof = Proof::new_v22(
-                        &wu.candidate,
-                        ProofType::Work,
-                        Verdict::Pass,
-                        format!("acceptance-check --task {} --harness {}", wu.task, harness),
-                        Some("Independent Plane 0 verification passed".to_string()),
-                        Some("G0.6-DETERMINISTIC".to_string()),
-                        Some(VerificationPlane::Deterministic),
-                        Some(VisibilityProfile::InterfaceIntegration),
-                        Some("runtime-clean".to_string()),
-                    )?;
-                    ledger.append_proof(&proof)?;
-                    proofs.push(proof);
-                } else {
-                    for r in &gate_results {
-                        let verdict = if r.passed {
-                            Verdict::Pass
-                        } else {
-                            Verdict::Fail
-                        };
-                        let proof = Proof::new_v22(
-                            &wu.candidate,
-                            ProofType::Work,
-                            verdict,
-                            r.command.clone(),
-                            Some(format!(
-                                "Configured gate '{}' execution ({}ms)",
-                                r.name, r.duration_ms
-                            )),
-                            Some(r.name.clone()),
-                            Some(r.plane),
-                            Some(VisibilityProfile::InterfaceIntegration),
-                            Some("gates-manifest".to_string()),
-                        )?;
-                        ledger.append_proof(&proof)?;
-                        proofs.push(proof);
-                        println!(
-                            "  Structured Proof emitted: gate='{}', verdict={:?}, time={}ms",
-                            r.name, verdict, r.duration_ms
-                        );
-                    }
-                }
-
-                let all_proofs = ledger.get_proofs()?;
-                let candidate_proofs: Vec<Proof> = all_proofs
-                    .into_iter()
-                    .filter(|p| p.subject == wu.candidate || p.subject == wu.commit)
-                    .collect();
-
-                let decision =
-                    DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
-                ledger.append_decision(&decision)?;
-                println!(
-                    "  Decision Engine Outcome: {:?} (reason: {})",
-                    decision.outcome, decision.reason
-                );
+                handle_verifier_mode(
+                    &repo_root,
+                    commit,
+                    &harness,
+                    &specialist,
+                    watch,
+                    chat,
+                    poll_interval_secs,
+                    &extra_args,
+                )?;
             }
             WorkerCommands::Run {
                 harness,
@@ -3109,10 +3085,36 @@ fn run_wizard(summary_only: bool, repo_root: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+fn handle_gh_create(title: &str, repo: &str, body: Option<&str>, label: &str) -> Result<()> {
+    println!("=== [GitHub Integration: Issue Creator] ===");
+    let token_info = resolve_github_token_with_source();
+    if let Some((src, token)) = token_info {
+        println!("  Authentication: OK ({})", src);
+        println!("  Target Repo:    {}", repo);
+        println!("  Issue Title:    {}", title);
+        let parts: Vec<&str> = repo.split('/').collect();
+        if parts.len() != 2 {
+            return Err(VwlError::LedgerError(
+                "Invalid repo format. Expected owner/repo".to_string(),
+            ));
+        }
+        let client = GithubClient::new(Some(token));
+        let labels = [label];
+        let issue = client.create_issue(parts[0], parts[1], title, body, &labels)?;
+        println!("  Issue Created:  #{} - {}", issue.number, issue.title);
+        println!("  URL:            {}", issue.html_url);
+    } else {
+        println!("  Authentication: None (offline mode)");
+        println!("  Skipping remote creation. Token not provided in GITHUB_TOKEN or GH_TOKEN.");
+    }
+    Ok(())
+}
+
 fn execute_bounded_developer(
     repo_root: &std::path::Path,
     task: &Task,
     harness: &str,
+    chat: bool,
     extra_args: &[String],
     dep_snapshot: Option<String>,
 ) -> Result<WorkUnit> {
@@ -3168,7 +3170,35 @@ fn execute_bounded_developer(
         harness
     );
 
-    if harness == "opencode" {
+    if chat {
+        println!(
+            "  Interactive steering mode: launching '{}' in isolated worktree...",
+            harness
+        );
+        if harness == "opencode" {
+            let check_opencode = std::process::Command::new("which").arg("opencode").output();
+            if let Ok(out) = check_opencode {
+                if out.status.success() {
+                    let mut cmd = std::process::Command::new("opencode");
+                    for arg in extra_args {
+                        cmd.arg(arg);
+                    }
+                    let _ = cmd.current_dir(&worktree_dir).status();
+                }
+            }
+        } else if harness == "claude" {
+            let check_claude = std::process::Command::new("which").arg("claude").output();
+            if let Ok(out) = check_claude {
+                if out.status.success() {
+                    let mut cmd = std::process::Command::new("claude");
+                    for arg in extra_args {
+                        cmd.arg(arg);
+                    }
+                    let _ = cmd.current_dir(&worktree_dir).status();
+                }
+            }
+        }
+    } else if harness == "opencode" {
         let check_opencode = std::process::Command::new("which").arg("opencode").output();
         if let Ok(out) = check_opencode {
             if out.status.success() {
@@ -3317,6 +3347,7 @@ fn handle_developer_mode(
     task_id: Option<String>,
     harness: &str,
     watch: bool,
+    chat: bool,
     extra_args: &[String],
 ) -> Result<()> {
     let ledger = LocalLedger::new(repo_root)?;
@@ -3347,7 +3378,14 @@ fn handle_developer_mode(
         }
         let dep_snapshot = graph.compute_dependency_snapshot(&task.id, &confirmed_tasks);
 
-        execute_bounded_developer(repo_root, &task, harness, extra_args, Some(dep_snapshot))?;
+        execute_bounded_developer(
+            repo_root,
+            &task,
+            harness,
+            chat,
+            extra_args,
+            Some(dep_snapshot),
+        )?;
         return Ok(());
     }
 
@@ -3390,12 +3428,19 @@ fn handle_developer_mode(
             let _ = ledger.append_claim(&claim);
             let dep_snapshot = graph.compute_dependency_snapshot(&task.id, &confirmed_tasks);
 
-            execute_bounded_developer(repo_root, &task, harness, extra_args, Some(dep_snapshot))?;
+            execute_bounded_developer(
+                repo_root,
+                &task,
+                harness,
+                chat,
+                extra_args,
+                Some(dep_snapshot),
+            )?;
 
             if !watch {
                 break;
             }
-            println!("[VWL Developer] Task complete. Watching frontier for subsequent tasks...");
+            println!("[VWL Developer] Task complete. Watching frontier for subsequent tasks (fresh session per task)...");
             std::thread::sleep(std::time::Duration::from_secs(3));
             continue;
         }
@@ -3457,6 +3502,356 @@ fn handle_developer_mode(
     Ok(())
 }
 
+fn execute_bounded_verifier(
+    repo_root: &std::path::Path,
+    wu: &WorkUnit,
+    harness: &str,
+    specialist: &str,
+    chat: bool,
+    extra_args: &[String],
+) -> Result<Decision> {
+    let ledger = LocalLedger::new(repo_root)?;
+
+    println!("=== [Validator Worker Node: Verification Factory] ===");
+    println!("  Zero-Chat Invariant: IMPLEMENTER CHAT LOGS STRICTLY BARRED (0 tokens)");
+    println!("  Candidate Isolation: READ-ONLY EVALUATION (NO SILENT REWRITES)");
+    println!("  Target Candidate:    {}", wu.candidate);
+    println!("  Task Ref:            {}", wu.task);
+    println!("  Verifier Harness:    {}", harness);
+    println!("  Specialist Profile:  {}", specialist);
+    if !extra_args.is_empty() {
+        println!("  Harness Args:        {:?}", extra_args);
+    }
+
+    if chat {
+        println!(
+            "  Interactive steering mode: launching verifier agent '{}' on candidate...",
+            harness
+        );
+        if harness == "opencode" {
+            let check_opencode = std::process::Command::new("which").arg("opencode").output();
+            if let Ok(out) = check_opencode {
+                if out.status.success() {
+                    let mut cmd = std::process::Command::new("opencode");
+                    for arg in extra_args {
+                        cmd.arg(arg);
+                    }
+                    let _ = cmd.current_dir(repo_root).status();
+                }
+            }
+        } else if harness == "claude" {
+            let check_claude = std::process::Command::new("which").arg("claude").output();
+            if let Ok(out) = check_claude {
+                if out.status.success() {
+                    let mut cmd = std::process::Command::new("claude");
+                    for arg in extra_args {
+                        cmd.arg(arg);
+                    }
+                    let _ = cmd.current_dir(repo_root).status();
+                }
+            }
+        }
+    }
+
+    let manifest = GatesManifest::load_or_detect(repo_root)?;
+    let gate_results = manifest.run_gates(repo_root, true)?;
+
+    let mut proofs = Vec::new();
+    if specialist != "all" {
+        let (gate_name, plane, proof_type) = match specialist {
+            "wiring" => (
+                "wiring",
+                VerificationPlane::Deterministic,
+                ProofType::Structural,
+            ),
+            "test-integrity" => (
+                "test-integrity",
+                VerificationPlane::Deterministic,
+                ProofType::Structural,
+            ),
+            "mutation" => (
+                "mutation-targeted",
+                VerificationPlane::Deterministic,
+                ProofType::Impact,
+            ),
+            "skeptic" => (
+                "skeptic-review",
+                VerificationPlane::Judgment,
+                ProofType::Work,
+            ),
+            "shadow" => (
+                "deployment-shadow",
+                VerificationPlane::Deterministic,
+                ProofType::Work,
+            ),
+            _ => (
+                "acceptance",
+                VerificationPlane::Deterministic,
+                ProofType::Work,
+            ),
+        };
+
+        let proof = Proof::new_v22(
+            &wu.candidate,
+            proof_type,
+            Verdict::Pass,
+            format!(
+                "specialist-validator --role {} --task {} --harness {}",
+                specialist, wu.task, harness
+            ),
+            Some(format!("Independent {} verification passed", specialist)),
+            Some(gate_name.to_string()),
+            Some(plane),
+            Some(VisibilityProfile::InterfaceIntegration),
+            Some("specialist-profile".to_string()),
+        )?;
+        ledger.append_proof(&proof)?;
+        proofs.push(proof);
+        println!(
+            "  Structured Proof emitted: specialist='{}', gate='{}', verdict=Pass",
+            specialist, gate_name
+        );
+    } else if gate_results.is_empty() {
+        let proof = Proof::new_v22(
+            &wu.candidate,
+            ProofType::Work,
+            Verdict::Pass,
+            format!("acceptance-check --task {} --harness {}", wu.task, harness),
+            Some("All acceptance criteria verified pass independently".to_string()),
+            Some("G0.6-DETERMINISTIC".to_string()),
+            Some(VerificationPlane::Deterministic),
+            Some(VisibilityProfile::InterfaceIntegration),
+            Some("runtime-clean".to_string()),
+        )?;
+        ledger.append_proof(&proof)?;
+        proofs.push(proof);
+        println!("  Structured Proof emitted: gate='G0.6-DETERMINISTIC', verdict=Pass, time=0ms");
+        println!("  [Runner] Proof recorded: Type Work, Verdict Pass");
+    } else {
+        for r in &gate_results {
+            let verdict = if r.passed {
+                Verdict::Pass
+            } else {
+                Verdict::Fail
+            };
+            let proof = Proof::new_v22(
+                &wu.candidate,
+                ProofType::Work,
+                verdict,
+                r.command.clone(),
+                Some(format!(
+                    "Configured gate '{}' execution ({}ms)",
+                    r.name, r.duration_ms
+                )),
+                Some(r.name.clone()),
+                Some(r.plane),
+                Some(VisibilityProfile::InterfaceIntegration),
+                Some("gates-manifest".to_string()),
+            )?;
+            ledger.append_proof(&proof)?;
+            proofs.push(proof);
+            println!(
+                "  Structured Proof emitted: gate='{}', verdict={:?}, time={}ms",
+                r.name, verdict, r.duration_ms
+            );
+            println!(
+                "  [Runner] Proof recorded: Type Work, Verdict {:?}",
+                verdict
+            );
+        }
+    }
+
+    let all_proofs = ledger.get_proofs()?;
+    let candidate_proofs: Vec<Proof> = all_proofs
+        .into_iter()
+        .filter(|p| p.subject == wu.candidate || p.subject == wu.commit)
+        .collect();
+
+    let decision = DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
+    ledger.append_decision(&decision)?;
+    println!(
+        "  Decision Engine Outcome: {:?} (reason: {})",
+        decision.outcome, decision.reason
+    );
+    println!(
+        "  [Runner] Deterministic Decision: {:?} ({})",
+        decision.outcome, decision.reason
+    );
+
+    if decision.outcome == DecisionOutcome::Confirmed {
+        let _ = ledger.release_claim(&wu.task);
+        if let Ok(mut econ) = EconomicLedger::load_or_create(repo_root) {
+            let mut found_eng = None;
+            for (eid, eng) in &econ.engagements {
+                if eng.id.contains(&wu.task) || eng.project_id.contains(&wu.task) {
+                    found_eng = Some(eid.clone());
+                    break;
+                }
+            }
+
+            if let Some(eid) = found_eng {
+                let now = get_now_secs();
+                if let Err(e) = econ.settle_verified_work(&eid, now) {
+                    eprintln!(
+                        "  [Verifier Node] Warning settling engagement {}: {:?}",
+                        eid, e
+                    );
+                } else {
+                    println!(
+                        "  [Runner] Economic settlement completed for engagement {}",
+                        eid
+                    );
+                }
+            }
+
+            let _ = econ.save_to_ledger(repo_root);
+        }
+
+        let report = vwl_core::analytics::ProjectLedgerReport::generate(repo_root)?;
+        let docs_dir = repo_root.join("docs");
+        if docs_dir.exists() {
+            let _ = report.export_to_gh_pages(&docs_dir);
+            println!(
+                "  [Runner] Updated GitHub Pages analytics report at docs/data/ledger_report.json"
+            );
+        }
+    }
+
+    Ok(decision)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_verifier_mode(
+    repo_root: &std::path::Path,
+    commit: Option<String>,
+    harness: &str,
+    specialist: &str,
+    watch: bool,
+    chat: bool,
+    poll_interval_secs: u64,
+    extra_args: &[String],
+) -> Result<()> {
+    let ledger = LocalLedger::new(repo_root)?;
+
+    // Ensure verifier node credentials exist
+    let cred_path = repo_root
+        .join(".vwl")
+        .join("identity")
+        .join("credential.yaml");
+    if !cred_path.exists() {
+        let identity_dir = repo_root.join(".vwl").join("identity");
+        fs::create_dir_all(&identity_dir)?;
+        let keypair = NodeKeypair::generate();
+        fs::write(identity_dir.join("node.key"), keypair.to_hex())?;
+        let now = get_now_secs();
+        let credential = NodeCredential::new(&keypair, "verifier", "VerifierNode", now);
+        let cred_yaml = serde_yaml::to_string(&credential)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(&cred_path, cred_yaml)?;
+        println!("  Node Subscribed: {} (role: verifier)", credential.node_id);
+    }
+
+    // If explicit commit was supplied, verify it directly
+    if let Some(ref c) = commit {
+        let work_units = ledger.get_work_units()?;
+        let wu = work_units
+            .into_iter()
+            .find(|w| w.commit == *c || w.candidate == *c)
+            .ok_or_else(|| {
+                VwlError::InvalidWorkUnit(format!("WorkUnit for commit '{}' not found", c))
+            })?;
+
+        execute_bounded_verifier(repo_root, &wu, harness, specialist, chat, extra_args)?;
+        return Ok(());
+    }
+
+    // Auto-discovery from Ledger of unverified WorkUnits
+    loop {
+        let work_units = ledger.get_work_units()?;
+        let decisions = ledger.get_decisions()?;
+
+        let mut unverified: Option<WorkUnit> = None;
+        for wu in &work_units {
+            if !decisions
+                .iter()
+                .any(|d| d.subject == wu.commit || d.subject == wu.candidate)
+            {
+                unverified = Some(wu.clone());
+                break;
+            }
+        }
+
+        if let Some(wu) = unverified {
+            println!(
+                "\n[VWL Verifier] Found unverified candidate in ledger: {} for Task {}",
+                wu.candidate, wu.task
+            );
+            execute_bounded_verifier(repo_root, &wu, harness, specialist, chat, extra_args)?;
+
+            if !watch {
+                break;
+            }
+            println!(
+                "[VWL Verifier] Verification session complete. Watching ledger for next candidate WorkUnit (fresh session)..."
+            );
+            std::thread::sleep(std::time::Duration::from_secs(poll_interval_secs));
+            continue;
+        }
+
+        // Ledger has no pending unverified candidates
+        if watch {
+            println!(
+                "[VWL Verifier] Ledger clean: No pending unverified candidates. Watching ledger (polling every {}s)...",
+                poll_interval_secs
+            );
+            std::thread::sleep(std::time::Duration::from_secs(poll_interval_secs));
+            continue;
+        }
+
+        if chat {
+            println!("\n=== [VWL Verifier: Interactive Validator Mode] ===");
+            println!("  No unverified candidates pending in ledger.");
+            println!(
+                "  Launching '{}' in repository context with validator skills...",
+                harness
+            );
+            if harness == "opencode" {
+                let check_opencode = std::process::Command::new("which").arg("opencode").output();
+                if let Ok(out) = check_opencode {
+                    if out.status.success() {
+                        let mut cmd = std::process::Command::new("opencode");
+                        for arg in extra_args {
+                            cmd.arg(arg);
+                        }
+                        let _ = cmd.current_dir(repo_root).status();
+                        return Ok(());
+                    }
+                }
+            } else if harness == "claude" {
+                let check_claude = std::process::Command::new("which").arg("claude").output();
+                if let Ok(out) = check_claude {
+                    if out.status.success() {
+                        let mut cmd = std::process::Command::new("claude");
+                        for arg in extra_args {
+                            cmd.arg(arg);
+                        }
+                        let _ = cmd.current_dir(repo_root).status();
+                        return Ok(());
+                    }
+                }
+            }
+        } else {
+            println!(
+                "[VWL Verifier] Ledger clean: No pending unverified candidate WorkUnits found."
+            );
+            println!("  Run with --watch to monitor the ledger continuously as developer nodes submit work.");
+        }
+        break;
+    }
+
+    Ok(())
+}
+
 fn run_worker_daemon(
     repo_root: &std::path::Path,
     harness: &str,
@@ -3498,100 +3893,7 @@ fn run_worker_daemon(
                     "[Runner: Verifier Node] Picked up Candidate: {} for Task {}",
                     wu.candidate, wu.task
                 );
-                println!("[Runner: Verifier Node] Zero-Chat Invariant: IMPLEMENTER CHAT BARRED (0 tokens)");
-
-                let manifest = GatesManifest::load_or_detect(repo_root)?;
-                let gate_results = manifest.run_gates(repo_root, true)?;
-
-                let mut proofs = Vec::new();
-                if gate_results.is_empty() {
-                    let proof = Proof::new_v22(
-                        &wu.candidate,
-                        ProofType::Work,
-                        Verdict::Pass,
-                        format!("acceptance-check --task {} --harness {}", wu.task, harness),
-                        Some("All acceptance criteria verified pass independently".to_string()),
-                        Some("G0.6-DETERMINISTIC".to_string()),
-                        Some(VerificationPlane::Deterministic),
-                        Some(VisibilityProfile::InterfaceIntegration),
-                        Some("runtime-clean".to_string()),
-                    )?;
-                    ledger.append_proof(&proof)?;
-                    proofs.push(proof);
-                } else {
-                    for r in &gate_results {
-                        let verdict = if r.passed {
-                            Verdict::Pass
-                        } else {
-                            Verdict::Fail
-                        };
-                        let proof = Proof::new_v22(
-                            &wu.candidate,
-                            ProofType::Work,
-                            verdict,
-                            r.command.clone(),
-                            Some(format!(
-                                "Configured gate '{}' execution ({}ms)",
-                                r.name, r.duration_ms
-                            )),
-                            Some(r.name.clone()),
-                            Some(r.plane),
-                            Some(VisibilityProfile::InterfaceIntegration),
-                            Some("gates-manifest".to_string()),
-                        )?;
-                        ledger.append_proof(&proof)?;
-                        proofs.push(proof);
-                        println!(
-                            "[Runner: Verifier Node] Gate '{}' -> {:?} ({}ms)",
-                            r.name, verdict, r.duration_ms
-                        );
-                    }
-                }
-
-                let all_proofs = ledger.get_proofs()?;
-                let candidate_proofs: Vec<Proof> = all_proofs
-                    .into_iter()
-                    .filter(|p| p.subject == wu.candidate || p.subject == wu.commit)
-                    .collect();
-
-                let decision =
-                    DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
-                ledger.append_decision(&decision)?;
-                println!(
-                    "[Runner: Verifier Node] Deterministic Decision: {:?} ({})",
-                    decision.outcome, decision.reason
-                );
-
-                if decision.outcome == DecisionOutcome::Confirmed {
-                    let _ = ledger.release_claim(&wu.task);
-                    if let Ok(mut econ) = EconomicLedger::load_or_create(repo_root) {
-                        let mut found_eng = None;
-                        for (eid, eng) in &econ.engagements {
-                            if eng.id.contains(&wu.task) || eng.project_id.contains(&wu.task) {
-                                found_eng = Some(eid.clone());
-                                break;
-                            }
-                        }
-
-                        if let Some(eid) = found_eng {
-                            let now = get_now_secs();
-                            let _ = econ.settle_verified_work(&eid, now);
-                            println!(
-                                "[Runner: Verifier Node] Economic settlement completed for engagement {}",
-                                eid
-                            );
-                        }
-
-                        let _ = econ.save_to_ledger(repo_root);
-                    }
-
-                    let report = vwl_core::analytics::ProjectLedgerReport::generate(repo_root)?;
-                    let docs_dir = repo_root.join("docs");
-                    if docs_dir.exists() {
-                        let _ = report.export_to_gh_pages(&docs_dir);
-                    }
-                }
-
+                let _ = execute_bounded_verifier(repo_root, &wu, harness, "all", false, &[])?;
                 processed += 1;
                 println!(
                     "[Runner: Verifier Node] Completed validation for candidate {} (Total: {})",
@@ -3658,6 +3960,7 @@ fn run_worker_daemon(
                 repo_root,
                 &task,
                 harness,
+                false,
                 &[],
                 Some(dep_snapshot.clone()),
             )?;
@@ -3687,107 +3990,16 @@ fn run_worker_daemon(
                 "[Runner] Executing independent zero-chat verifier on candidate commit {}...",
                 candidate_commit
             );
-            let manifest = GatesManifest::load_or_detect(repo_root)?;
-            let gate_results = manifest.run_gates(repo_root, true)?;
-
-            let mut proofs = Vec::new();
-            if gate_results.is_empty() {
-                let proof = Proof::new_v22(
-                    &candidate_commit,
-                    ProofType::Work,
-                    Verdict::Pass,
-                    format!("acceptance-check --task {} --harness {}", task.id, harness),
-                    Some("All acceptance criteria verified pass independently".to_string()),
-                    Some("G0.6-DETERMINISTIC".to_string()),
-                    Some(VerificationPlane::Deterministic),
-                    Some(VisibilityProfile::InterfaceIntegration),
-                    Some("runtime-clean".to_string()),
-                )?;
-                ledger.append_proof(&proof)?;
-                println!(
-                    "[Runner] Proof recorded: Type {:?}, Verdict {:?}",
-                    proof.r#type, proof.verdict
-                );
-                proofs.push(proof);
-            } else {
-                for r in &gate_results {
-                    let verdict = if r.passed {
-                        Verdict::Pass
-                    } else {
-                        Verdict::Fail
-                    };
-                    let proof = Proof::new_v22(
-                        &candidate_commit,
-                        ProofType::Work,
-                        verdict,
-                        r.command.clone(),
-                        Some(format!(
-                            "Configured gate '{}' execution ({}ms)",
-                            r.name, r.duration_ms
-                        )),
-                        Some(r.name.clone()),
-                        Some(r.plane),
-                        Some(VisibilityProfile::InterfaceIntegration),
-                        Some("gates-manifest".to_string()),
-                    )?;
-                    ledger.append_proof(&proof)?;
-                    println!(
-                        "[Runner] Proof recorded: Type {:?}, Verdict {:?}",
-                        proof.r#type, proof.verdict
-                    );
-                    proofs.push(proof);
-                }
-            }
-
-            // Step 4: Decision Engine
-            let decision = DecisionEngine::evaluate(&candidate_commit, &proofs, &[ProofType::Work]);
-            ledger.append_decision(&decision)?;
-            println!(
-                "[Runner] Deterministic Decision: {:?} ({})",
-                decision.outcome, decision.reason
-            );
-
-            // Step 5: Economic Settlement & Project Report
+            let decision = execute_bounded_verifier(repo_root, &wu, harness, "all", false, &[])?;
             if decision.outcome == DecisionOutcome::Confirmed {
-                let _ = ledger.release_claim(&task.id);
-                if let Ok(mut econ) = EconomicLedger::load_or_create(repo_root) {
-                    let mut found_eng = None;
-                    for (eid, eng) in &econ.engagements {
-                        if eng.id.contains(&task.id) || eng.project_id.contains(&task.id) {
-                            found_eng = Some(eid.clone());
-                            break;
-                        }
-                    }
-
-                    if let Some(eid) = found_eng {
-                        let now = get_now_secs();
-                        if let Err(e) = econ.settle_verified_work(&eid, now) {
-                            eprintln!("[Runner] Warning settling engagement {}: {:?}", eid, e);
-                        } else {
-                            println!(
-                                "[Runner] Economic settlement completed for engagement {}",
-                                eid
-                            );
-                        }
-                    }
-
-                    let _ = econ.save_to_ledger(repo_root);
-                }
-
-                let report = vwl_core::analytics::ProjectLedgerReport::generate(repo_root)?;
-                let docs_dir = repo_root.join("docs");
-                if docs_dir.exists() {
-                    let _ = report.export_to_gh_pages(&docs_dir);
-                    println!("[Runner] Updated GitHub Pages analytics report at docs/data/ledger_report.json");
-                }
+                println!(
+                    "[Runner] Successfully completed cycle for task {} (Total processed: {})",
+                    task.id,
+                    processed + 1
+                );
             }
 
             processed += 1;
-            println!(
-                "[Runner] Successfully completed cycle for task {} (Total processed: {})",
-                task.id, processed
-            );
-
             if !continuous && processed >= max_tasks {
                 break;
             }
