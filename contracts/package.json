@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "description": "Smart contracts for VWL (Gate 7: NodeRegistry, ProjectRegistry, Escrow, VestingSettlement)",
   "scripts": {
-    "test": "echo 'Contracts test placeholder for Gate 7'",
-    "build": "echo 'Contracts build placeholder'"
+    "test": "if command -v forge >/dev/null 2>&1 || [ -x \"$HOME/.config/.foundry/bin/forge\" ]; then export PATH=\"$PATH:$HOME/.config/.foundry/bin\"; forge test; else echo 'Foundry forge not found, skipping EVM differential tests'; fi",
+    "build": "if command -v forge >/dev/null 2>&1 || [ -x \"$HOME/.config/.foundry/bin/forge\" ]; then export PATH=\"$PATH:$HOME/.config/.foundry/bin\"; forge build; else echo 'Foundry forge not found, skipping EVM build'; fi"
   },
   "devDependencies": {
     "solhint": "^4.1.1"

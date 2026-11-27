@@ -36,3 +36,8 @@ coverage/
 # Temporary Worktrees and Test Repos
 /tmp-vwl-*
 /worktrees/
+
+# Foundry
+contracts/out/
+contracts/cache/
+
