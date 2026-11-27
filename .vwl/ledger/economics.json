@@ -1,0 +1,33 @@
+{
+  "projects": {
+    "horia-ai/vwl": {
+      "project_id": "horia-ai/vwl",
+      "total_deposited_work": 2500000,
+      "project_locked_work": 2000000,
+      "reserved_work": 0,
+      "disbursed_work": 500000
+    }
+  },
+  "nodes": {
+    "node-ed25519-53dd2d244b77": {
+      "node_id": "node-ed25519-53dd2d244b77",
+      "liquid_work": 0,
+      "earned_work": 500000,
+      "vesting_work": 500000,
+      "last_vest_ts": 1795740975
+    }
+  },
+  "engagements": {
+    "ENGAGEMENT-horia-ai/vwl-node-ed25519-53dd2d244b77-1795740941": {
+      "id": "ENGAGEMENT-horia-ai/vwl-node-ed25519-53dd2d244b77-1795740941",
+      "project_id": "horia-ai/vwl",
+      "node_id": "node-ed25519-53dd2d244b77",
+      "allocated_work": 500000,
+      "vesting_duration_secs": 3600,
+      "created_at": 1795740941,
+      "status": "Earned",
+      "project_signature": "3406e7f0cf169360dcf86ab10211d011035be06a009ccd74caa2f8fc89ef8ca5d77d88543921d553e140af588b2aeea6ee595394523e65e15f2b9ada53c9540f",
+      "node_signature": "0c083327a07de97c40c55be4bded2c0718f72bd9141fa02be71e90e0421f8f2b9d03a77cfe47ab34328616e278dd56a24293d403ae276cc98d2787c65cef3f01"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+id: TASK-DOGFOOD-001
+objective: Self-hosting dogfooding verification of VWL protocol directly on vwl repository with Gemini harness
+acceptance:
+- cargo test passes all unit and integration tests across vwl-core, vwl-cli, vwl-tui
+- cargo clippy --all-targets --all-features -- -D warnings is completely clean
+- npm test passes all vitest and forge test suites
+- vwl replay reconstructs authoritative state with zero divergence
+- 'economic conservation invariant holds strictly: TotalDeposited == ProjectLocked + Reserved + Earned + Vesting + Liquid'
+base: 3cb5894dee1a323a9eb07ee2a03f0b32c25e0e3c

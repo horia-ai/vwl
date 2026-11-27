@@ -1,0 +1,6 @@
+subject: cand_task_dogfood_001_3cb5894d
+type: work
+verdict: pass
+evidence:
+  command: acceptance-check --task TASK-DOGFOOD-001 --harness gemini
+  output: All acceptance criteria verified pass independently
