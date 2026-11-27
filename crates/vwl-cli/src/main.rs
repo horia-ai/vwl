@@ -60,6 +60,12 @@ enum Commands {
         cmd: NodeCommands,
     },
 
+    /// Manage local economic state machine, WORK balances, and budget reservation (Gate 5)
+    Economics {
+        #[command(subcommand)]
+        cmd: EconomicsCommands,
+    },
+
     /// Manage and inject agent skills into repository (.claude, .gemini, .github, .vwl)
     Skill {
         #[command(subcommand)]
@@ -134,6 +140,28 @@ enum NodeCommands {
         message: String,
         signature: String,
     },
+}
+
+#[derive(Subcommand)]
+enum EconomicsCommands {
+    /// Show current economic accounts and WORK allocation
+    Show,
+    /// Deposit fiat USD converting to WORK tokens (1 USD = 1,000 WORK)
+    Deposit { project_id: String, amount_usd: u64 },
+    /// Create a dual-signed engagement reserving budget for a node
+    Engage {
+        project_id: String,
+        node_id: String,
+        amount_work: u64,
+        #[arg(long, default_value = "0")]
+        vesting_secs: u64,
+    },
+    /// Settle verified work on an engagement transitioning funds to earned/vesting
+    Settle { engagement_id: String },
+    /// Release vesting funds to liquid balance
+    Payout { node_id: String },
+    /// Verify conservation invariant across all accounts
+    Verify,
 }
 
 #[derive(Subcommand)]
@@ -362,6 +390,119 @@ fn main() -> Result<()> {
                 }
             }
         },
+
+        Commands::Economics { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let mut ledger = vwl_core::EconomicLedger::load_from_ledger(&repo_root)?;
+
+            match cmd {
+                EconomicsCommands::Show => {
+                    println!("VWL Local Economic State Machine (Gate 5):");
+                    println!("Projects ({}):", ledger.projects.len());
+                    for p in ledger.projects.values() {
+                        println!(
+                            "  - Project {}: Deposited {} | Locked {} | Reserved {} | Disbursed {}",
+                            p.project_id,
+                            p.total_deposited_work,
+                            p.project_locked_work,
+                            p.reserved_work,
+                            p.disbursed_work
+                        );
+                    }
+                    println!("Nodes ({}):", ledger.nodes.len());
+                    for n in ledger.nodes.values() {
+                        println!(
+                            "  - Node {}: Liquid {} | Vesting {} | Earned {}",
+                            n.node_id, n.liquid_work, n.vesting_work, n.earned_work
+                        );
+                    }
+                    println!("Engagements ({}):", ledger.engagements.len());
+                    for e in ledger.engagements.values() {
+                        println!(
+                            "  - [{}] {} -> {} | Alloc: {} WORK | [{}]",
+                            e.id, e.project_id, e.node_id, e.allocated_work, e.status
+                        );
+                    }
+                    ledger.check_conservation_invariant()?;
+                    println!("Economic Conservation Invariant: VALID");
+                }
+
+                EconomicsCommands::Deposit {
+                    project_id,
+                    amount_usd,
+                } => {
+                    let minted = ledger.deposit_fiat_usd(&project_id, amount_usd);
+                    ledger.check_conservation_invariant()?;
+                    ledger.save_to_ledger(&repo_root)?;
+                    println!(
+                        "Successfully deposited ${} USD -> Minted {} WORK for Project {}",
+                        amount_usd, minted, project_id
+                    );
+                }
+
+                EconomicsCommands::Engage {
+                    project_id,
+                    node_id,
+                    amount_work,
+                    vesting_secs,
+                } => {
+                    let key_path = repo_root.join(".vwl").join("identity").join("node.key");
+                    let proj_key = if key_path.exists() {
+                        let hex_str = fs::read_to_string(&key_path)?.trim().to_string();
+                        NodeKeypair::from_hex(&hex_str)?
+                    } else {
+                        NodeKeypair::generate()
+                    };
+                    let node_key = NodeKeypair::generate();
+
+                    let eng = ledger.create_engagement(
+                        &proj_key,
+                        &node_key,
+                        vwl_core::EngagementParams {
+                            project_id: &project_id,
+                            node_id: &node_id,
+                            work_amount: amount_work,
+                            vesting_duration_secs: vesting_secs,
+                            now: get_now_secs(),
+                        },
+                    )?;
+                    ledger.check_conservation_invariant()?;
+                    ledger.save_to_ledger(&repo_root)?;
+
+                    println!("Successfully Created Engagement (Gate 5):");
+                    println!("  Engagement ID: {}", eng.id);
+                    println!("  Project:       {}", eng.project_id);
+                    println!("  Node:          {}", eng.node_id);
+                    println!("  Allocated:     {} WORK", eng.allocated_work);
+                    println!("  Status:        {}", eng.status);
+                }
+
+                EconomicsCommands::Settle { engagement_id } => {
+                    ledger.settle_verified_work(&engagement_id, get_now_secs())?;
+                    ledger.check_conservation_invariant()?;
+                    ledger.save_to_ledger(&repo_root)?;
+                    println!(
+                        "Successfully settled verified work for engagement {}",
+                        engagement_id
+                    );
+                }
+
+                EconomicsCommands::Payout { node_id } => {
+                    let released = ledger.release_vesting(&node_id, get_now_secs())?;
+                    ledger.check_conservation_invariant()?;
+                    ledger.save_to_ledger(&repo_root)?;
+                    println!(
+                        "Released {} WORK from vesting to liquid for node {}",
+                        released, node_id
+                    );
+                }
+
+                EconomicsCommands::Verify => {
+                    ledger.check_conservation_invariant()?;
+                    println!("Economic Conservation Invariant Strictly Verified: PASSED (Zero divergence)");
+                }
+            }
+        }
 
         Commands::Skill { cmd } => match cmd {
             SkillCommands::List => {

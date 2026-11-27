@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod decision;
+pub mod economics;
 pub mod error;
 pub mod git;
 pub mod identity;
@@ -16,6 +17,9 @@ pub use analytics::{
     ProjectLedgerReport,
 };
 pub use decision::{Decision, DecisionEngine, DecisionOutcome};
+pub use economics::{
+    EconomicLedger, Engagement, EngagementParams, NodeAccount, ProjectAccount, WORK_PER_USD,
+};
 pub use error::{Result, VwlError};
 pub use git::{GitInspector, GitRepoInfo};
 pub use identity::{

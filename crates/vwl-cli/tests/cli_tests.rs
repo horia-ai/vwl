@@ -19,6 +19,7 @@ fn test_cli_help_flag() {
     assert!(stdout.contains("skill"));
     assert!(stdout.contains("node"));
     assert!(stdout.contains("market"));
+    assert!(stdout.contains("economics"));
 }
 
 #[test]
@@ -234,4 +235,64 @@ roles:
     let offer_str = String::from_utf8_lossy(&offer_output.stdout);
     assert!(offer_str.contains("Successfully Submitted Cryptographic Offer (Gate 2):"));
     assert!(offer_str.contains("Ask Budget:   190000 WORK"));
+}
+
+#[test]
+fn test_cli_economics_commands() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to init git");
+
+    // 1. vwl economics deposit
+    let dep_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["economics", "deposit", "horia-ai/vwl", "1000"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to deposit funds");
+    assert!(dep_output.status.success());
+    let dep_str = String::from_utf8_lossy(&dep_output.stdout);
+    assert!(dep_str.contains("Minted 1000000 WORK"));
+
+    // 2. vwl economics engage
+    let eng_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "economics",
+            "engage",
+            "horia-ai/vwl",
+            "node-gemini-dev",
+            "250000",
+            "--vesting-secs",
+            "3600",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to create engagement");
+    assert!(eng_output.status.success());
+    let eng_str = String::from_utf8_lossy(&eng_output.stdout);
+    assert!(eng_str.contains("Successfully Created Engagement (Gate 5):"));
+    assert!(eng_str.contains("Allocated:     250000 WORK"));
+
+    // 3. vwl economics verify
+    let ver_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["economics", "verify"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to verify conservation invariant");
+    assert!(ver_output.status.success());
+    let ver_str = String::from_utf8_lossy(&ver_output.stdout);
+    assert!(ver_str.contains("Economic Conservation Invariant Strictly Verified: PASSED"));
+
+    // 4. vwl economics show
+    let show_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["economics", "show"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to show economics");
+    assert!(show_output.status.success());
+    let show_str = String::from_utf8_lossy(&show_output.stdout);
+    assert!(show_str.contains("VWL Local Economic State Machine (Gate 5):"));
+    assert!(show_str.contains("Reserved 250000"));
 }
