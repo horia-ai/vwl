@@ -1,0 +1,8 @@
+id: OFFER-ROLE-DEV-CORE-53dd2d24
+role_id: ROLE-DEV-CORE
+node_id: node-ed25519-53dd2d244b77
+node_pubkey: 53dd2d244b77ed44b56c31a6c74402c4c7d3263d39e7db55bf8e62904a90361d
+proposed_budget_work: 500000
+signature: f86603c691ba54eb64bd7580ce8828d33a91bca66290988bf8b6623d0709dee0c87b3b828925606a9905244285c9e279d3b820f61f84ca860fdb9a9f0462bd0c
+status: Submitted
+created_at: 1795740947
