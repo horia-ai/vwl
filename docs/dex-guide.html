@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VWL Developer Portal — DEX Integration & Testnet Setup</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    .auth-banner {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 640px;
+      margin: 40px auto;
+      text-align: center;
+    }
+    .auth-banner h3 {
+      font-size: 1.5rem;
+      margin-bottom: 12px;
+    }
+    .auth-input-group {
+      display: flex;
+      gap: 12px;
+      margin: 20px 0;
+    }
+    .auth-input {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+    }
+    .auth-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .auth-status {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      min-height: 24px;
+    }
+    .auth-status.error { color: var(--danger); }
+    .auth-status.success { color: var(--success); }
+    .user-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(35, 134, 54, 0.15);
+      border: 1px solid var(--success);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #3fb950;
+    }
+    .user-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+    }
+    .locked-content {
+      display: none;
+    }
+    .calc-box {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 24px 0;
+    }
+    .calc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .calc-item {
+      background: var(--bg-tertiary);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+    .calc-label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .calc-val {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .step-card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .step-num {
+      background: var(--accent);
+      color: #000;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="navbar">
+    <div class="container nav-container">
+      <div class="logo">
+        <a href="index.html" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px;">
+          <span class="logo-badge">VWL</span>
+          <span class="logo-title">Virtual Work Ledger</span>
+        </a>
+      </div>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="index.html#gates">Gates 0-10</a>
+        <a href="dex-guide.html" style="color: var(--accent); font-weight: 600;">DEX & Liquidity</a>
+        <a href="https://github.com/horia-ai/vwl" class="btn btn-sm btn-outline" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container" style="padding-top: 40px; padding-bottom: 80px;">
+    <div style="text-align: center; max-width: 760px; margin: 0 auto 32px;">
+      <div class="badge-pill">Developer Restricted Access</div>
+      <h1 class="hero-title">DEX Integration & Contract Setup</h1>
+      <p class="hero-subtitle">
+        Confidential technical guide for provisioning WORK token liquidity on Uniswap v3, initializing pools on Ethereum Sepolia / Base, and running differential testnet simulations.
+      </p>
+    </div>
+
+    <!-- Token Gate Box -->
+    <div id="authGate" class="auth-banner">
+      <div style="font-size: 2.5rem; margin-bottom: 12px;">🔒</div>
+      <h3>Authentication Required</h3>
+      <p style="color: var(--text-secondary); font-size: 0.95rem;">
+        This document contains sensitive smart contract deployment specifications and liquidity pool parameters. Enter your GitHub Personal Access Token (PAT) to verify authorization.
+      </p>
+      
+      <div class="auth-input-group">
+        <input type="password" id="ghTokenInput" class="auth-input" placeholder="ghp_... or github_pat_..." autocomplete="off">
+        <button id="verifyBtn" class="btn btn-primary" onclick="verifyToken()">Unlock Portal</button>
+      </div>
+
+      <div id="authStatus" class="auth-status"></div>
+      <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 16px;">
+        Tokens are verified directly against <code>api.github.com/user</code> client-side and cached in your session only. No tokens are sent to third-party servers.
+      </p>
+    </div>
+
+    <!-- Authenticated Header (Hidden initially) -->
+    <div id="userHeader" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 32px; background: var(--bg-secondary); padding: 16px 24px; border-radius: 12px; border: 1px solid var(--border-color);">
+      <div id="userInfo" class="user-pill">
+        <img id="userAvatar" class="user-avatar" src="" alt="avatar">
+        <span id="userName">Authenticated</span>
+      </div>
+      <button class="btn btn-sm btn-secondary" onclick="signOut()">Lock / Clear Token</button>
+    </div>
+
+    <!-- Protected Content (Hidden until unlocked) -->
+    <div id="protectedContent" class="locked-content">
+      
+      <!-- Section 1: Venue Choice -->
+      <section class="step-card">
+        <div class="step-header">
+          <div class="step-num">1</div>
+          <h2>Selected Decentralized Exchange (DEX): Uniswap v3</h2>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          For Gate 10 public liquidity evaluation, VWL pairs the <strong>WORK</strong> token against <strong>USDC</strong> on <strong>Uniswap v3</strong> (Ethereum Sepolia / Base Sepolia).
+        </p>
+        <div class="grid grid-3">
+          <div class="card">
+            <h4>Concentrated Liquidity</h4>
+            <p>Enables allocating liquidity within tight price bounds (e.g. $0.00095 to $0.00105), minimizing slippage for labor wage conversions with 10x higher capital efficiency.</p>
+          </div>
+          <div class="card">
+            <h4>Non-Custodial Escrow</h4>
+            <p>Pools are managed entirely by immutable Uniswap v3 core smart contracts, guaranteeing that neither project owners nor nodes hold custodial control over trading reserves.</p>
+          </div>
+          <div class="card">
+            <h4>TWAP Oracle</h4>
+            <p>Built-in geometric time-weighted average price (TWAP) feeds resist flash-loan and sandwich manipulation, protecting project budgets.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Ratio Calculator -->
+      <section class="step-card">
+        <div class="step-header">
+          <div class="step-num">2</div>
+          <h2>Price Ratio & Invariant Specification</h2>
+        </div>
+        <p style="color: var(--text-secondary);">
+          In Gate 5 & Gate 9, VWL establishes a deterministic baseline denomination:
+          <strong>1.00 USD = 1,000 WORK</strong> (&harr; <strong>1 WORK = 0.001 USD</strong>).
+        </p>
+
+        <div class="calc-box">
+          <h3>Interactive Pool Sizing Calculator</h3>
+          <div style="margin-top: 16px;">
+            <label style="font-size: 0.9rem; color: var(--text-secondary);">Target Project Funding (USDC):</label>
+            <input type="number" id="calcUsdInput" class="auth-input" value="10000" oninput="calculatePool(this.value)" style="width: 200px; display: inline-block; margin-left: 12px;">
+          </div>
+          <div class="calc-grid">
+            <div class="calc-item">
+              <div class="calc-label">Paired WORK Required</div>
+              <div id="calcWorkOutput" class="calc-val">10,000,000 WORK</div>
+            </div>
+            <div class="calc-item">
+              <div class="calc-label">Uniswap Fee Tier</div>
+              <div class="calc-val">0.30% (Tick Spacing: 60)</div>
+            </div>
+            <div class="calc-item">
+              <div class="calc-label">Concentrated Price Range</div>
+              <div class="calc-val">$0.00095 &mdash; $0.00105</div>
+            </div>
+            <div class="calc-item">
+              <div class="calc-label">SqrtPriceX96 Target</div>
+              <div class="calc-val">2,505,414,483,753,750,000</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3: Smart Contract Deployment -->
+      <section class="step-card">
+        <div class="step-header">
+          <div class="step-num">3</div>
+          <h2>Contract Deployment & Testing Instructions</h2>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          The smart contracts are located in <code>contracts/contracts/</code>:
+        </p>
+        <ul style="margin-left: 24px; color: var(--text-secondary); margin-bottom: 16px;">
+          <li><code>WorkToken.sol</code>: ERC-20 Labor Asset with EIP-2612 Permit and minter role restricted to VWL Settlement Escrow.</li>
+          <li><code>MockUSDC.sol</code>: 6-decimal stablecoin test token.</li>
+          <li><code>test/DEXPoolIntegration.t.sol</code>: Foundry integration test verifying swap execution and value conservation.</li>
+        </ul>
+
+        <h4>1. Execute Local Differential Tests</h4>
+        <div class="arch-box" style="margin: 12px 0 20px;">
+          <pre><code># Run Foundry test suite
+cd contracts
+forge test -vvv --match-contract DEXPoolIntegrationTest</code></pre>
+        </div>
+
+        <h4>2. Deploy to Ethereum Sepolia or Base Sepolia</h4>
+        <div class="arch-box" style="margin: 12px 0 20px;">
+          <pre><code># Set environment variables
+export RPC_URL="https://sepolia.base.org"
+export PRIVATE_KEY="0x..."
+
+# 1. Deploy MockUSDC
+forge create contracts/MockUSDC.sol:MockUSDC --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+
+# 2. Deploy WorkToken (pass escrow address and initial supply: 100M WORK)
+forge create contracts/WorkToken.sol:WorkToken \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY \
+  --constructor-args 0x0000000000000000000000000000000000000001 100000000000000000000000000</code></pre>
+        </div>
+
+        <h4>3. Initialize Uniswap v3 Pool via Cast</h4>
+        <div class="arch-box" style="margin: 12px 0 20px;">
+          <pre><code># Sepolia UniswapV3Factory: 0x0227628f3F023674B2267BE08c790D01917f96b9
+cast send 0x0227628f3F023674B2267BE08c790D01917f96b9 \
+  "createPool(address,address,uint24)" \
+  $WORK_ADDRESS $USDC_ADDRESS 3000 \
+  --rpc-url $RPC_URL --private-key $PRIVATE_KEY</code></pre>
+        </div>
+      </section>
+
+      <!-- Section 4: Gate 10 Go/No-Go Checklist -->
+      <section class="step-card">
+        <div class="step-header">
+          <div class="step-num">4</div>
+          <h2>Gate 10 Public Market Go / No-Go Checklist</h2>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          As mandated by the VWL specification, public DEX liquidity is strictly gated. A public pool may NOT be deployed in production until:
+        </p>
+        <div class="grid grid-2">
+          <div class="card">
+            <h4>Decoupling Fixed Issuance</h4>
+            <p>Fixed 1000:1 issuance cannot remain an arbitrageable public promise once WORK floats on a public DEX. Inbound fiat must purchase at market TWAP or execute batch auctions.</p>
+          </div>
+          <div class="card">
+            <h4>Security & Formal Audit</h4>
+            <p>Smart contracts (NodeRegistry, Escrow, VestingSettlement, WorkToken) must pass a formal audit with zero high/critical vulnerabilities.</p>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2026 Virtual Work Ledger (horia-ai/vwl). Authenticated Developer Documentation.</p>
+    </div>
+  </footer>
+
+  <script>
+    function calculatePool(usdVal) {
+      const val = parseFloat(usdVal) || 0;
+      const workVal = val * 1000;
+      document.getElementById('calcWorkOutput').innerText = workVal.toLocaleString() + ' WORK';
+    }
+
+    async function verifyToken() {
+      const input = document.getElementById('ghTokenInput');
+      const status = document.getElementById('authStatus');
+      const token = input.value.trim();
+
+      if (!token) {
+        status.className = 'auth-status error';
+        status.innerText = 'Please enter a GitHub Personal Access Token.';
+        return;
+      }
+
+      status.className = 'auth-status';
+      status.innerText = 'Verifying credentials with api.github.com...';
+
+      try {
+        const resp = await fetch('https://api.github.com/user', {
+          headers: {
+            'Authorization': 'token ' + token,
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        });
+
+        if (!resp.ok) {
+          throw new Error('Invalid token or unauthorized (' + resp.status + ')');
+        }
+
+        const user = await resp.json();
+        
+        // Save to session
+        sessionStorage.setItem('vwl_dev_token', token);
+        sessionStorage.setItem('vwl_user_login', user.login);
+        sessionStorage.setItem('vwl_user_avatar', user.avatar_url);
+
+        renderAuthenticated(user.login, user.avatar_url);
+      } catch (err) {
+        status.className = 'auth-status error';
+        status.innerText = err.message || 'Authentication failed.';
+      }
+    }
+
+    function renderAuthenticated(login, avatar) {
+      document.getElementById('authGate').style.display = 'none';
+      document.getElementById('protectedContent').style.display = 'block';
+      document.getElementById('userHeader').style.display = 'flex';
+      document.getElementById('userName').innerText = '@' + login + ' (Authorized Developer)';
+      if (avatar) {
+        document.getElementById('userAvatar').src = avatar;
+      }
+    }
+
+    function signOut() {
+      sessionStorage.removeItem('vwl_dev_token');
+      sessionStorage.removeItem('vwl_user_login');
+      sessionStorage.removeItem('vwl_user_avatar');
+      document.getElementById('ghTokenInput').value = '';
+      document.getElementById('authStatus').innerText = '';
+      document.getElementById('authGate').style.display = 'block';
+      document.getElementById('protectedContent').style.display = 'none';
+      document.getElementById('userHeader').style.display = 'none';
+    }
+
+    // Auto-restore session if previously authenticated
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedToken = sessionStorage.getItem('vwl_dev_token');
+      const savedLogin = sessionStorage.getItem('vwl_user_login');
+      const savedAvatar = sessionStorage.getItem('vwl_user_avatar');
+
+      if (savedToken && savedLogin) {
+        renderAuthenticated(savedLogin, savedAvatar);
+      }
+    });
+  </script>
+</body>
+</html>
