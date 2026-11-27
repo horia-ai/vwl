@@ -26,6 +26,9 @@ pub enum VwlError {
     #[error("Replay divergence: {0}")]
     ReplayDivergence(String),
 
+    #[error("Verification failed: {0}")]
+    VerificationFailed(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }

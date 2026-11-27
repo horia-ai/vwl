@@ -1,5 +1,6 @@
 use crate::decision::Decision;
 use crate::error::{Result, VwlError};
+use crate::factory::{Challenge, VerificationPlan, VerifierArtifact};
 use crate::graph::{Claim, TaskDependency, TaskGraph};
 use crate::proof::Proof;
 use crate::task::Task;
@@ -20,6 +21,9 @@ impl LocalLedger {
         fs::create_dir_all(root_dir.join("decisions"))?;
         fs::create_dir_all(root_dir.join("dependencies"))?;
         fs::create_dir_all(root_dir.join("claims"))?;
+        fs::create_dir_all(root_dir.join("plans"))?;
+        fs::create_dir_all(root_dir.join("artifacts"))?;
+        fs::create_dir_all(root_dir.join("challenges"))?;
 
         Ok(Self { root_dir })
     }
@@ -284,5 +288,98 @@ impl LocalLedger {
             }
         }
         Ok(proofs)
+    }
+
+    pub fn append_verification_plan(&self, plan: &VerificationPlan) -> Result<()> {
+        let safe_subject = plan.subject.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("plans")
+            .join(format!("{}.yaml", safe_subject));
+        let yaml =
+            serde_yaml::to_string(plan).map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(file_path, yaml)?;
+        Ok(())
+    }
+
+    pub fn get_verification_plan(&self, subject: &str) -> Result<Option<VerificationPlan>> {
+        let safe_subject = subject.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("plans")
+            .join(format!("{}.yaml", safe_subject));
+        if file_path.exists() {
+            let content = fs::read_to_string(file_path)?;
+            let plan: VerificationPlan = serde_yaml::from_str(&content)
+                .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+            Ok(Some(plan))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn append_verifier_artifact(&self, artifact: &VerifierArtifact) -> Result<()> {
+        let safe_id = artifact.id.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("artifacts")
+            .join(format!("{}.yaml", safe_id));
+        let yaml = serde_yaml::to_string(artifact)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(file_path, yaml)?;
+        Ok(())
+    }
+
+    pub fn get_verifier_artifacts_for_subject(
+        &self,
+        subject: &str,
+    ) -> Result<Vec<VerifierArtifact>> {
+        let mut artifacts = Vec::new();
+        let artifacts_dir = self.root_dir.join("artifacts");
+        if artifacts_dir.exists() {
+            for entry in fs::read_dir(artifacts_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    let art: VerifierArtifact = serde_yaml::from_str(&content)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    if art.subject == subject {
+                        artifacts.push(art);
+                    }
+                }
+            }
+        }
+        artifacts.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(artifacts)
+    }
+
+    pub fn append_challenge(&self, challenge: &Challenge) -> Result<()> {
+        let safe_id = challenge.id.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("challenges")
+            .join(format!("{}.yaml", safe_id));
+        let yaml = serde_yaml::to_string(challenge)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(file_path, yaml)?;
+        Ok(())
+    }
+
+    pub fn get_challenges(&self) -> Result<Vec<Challenge>> {
+        let mut challenges = Vec::new();
+        let ch_dir = self.root_dir.join("challenges");
+        if ch_dir.exists() {
+            for entry in fs::read_dir(ch_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    let ch: Challenge = serde_yaml::from_str(&content)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    challenges.push(ch);
+                }
+            }
+        }
+        challenges.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(challenges)
     }
 }
