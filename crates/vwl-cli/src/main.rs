@@ -1,7 +1,10 @@
 use clap::{Parser, Subcommand};
+use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use vwl_core::{
-    git::GitInspector, ledger::LocalLedger, replay::ReplayEngine, skills, task::Task, Result,
+    git::GitInspector, identity::NodeCredential, identity::NodeKeypair, ledger::LocalLedger,
+    replay::ReplayEngine, skills, task::Task, verify_signature, Result, VwlError,
 };
 
 #[derive(Parser)]
@@ -51,6 +54,12 @@ enum Commands {
         cmd: WorkerCommands,
     },
 
+    /// Manage decentralized node identity and cryptographic credentials (Gate 1)
+    Node {
+        #[command(subcommand)]
+        cmd: NodeCommands,
+    },
+
     /// Manage and inject agent skills into repository (.claude, .gemini, .github, .vwl)
     Skill {
         #[command(subcommand)]
@@ -90,6 +99,27 @@ enum WorkerCommands {
 }
 
 #[derive(Subcommand)]
+enum NodeCommands {
+    /// Initialize Ed25519 node identity and credentials in .vwl/identity/
+    Init {
+        #[arg(long, default_value = "developer")]
+        role: String,
+        #[arg(long, default_value = "Gemini Agent Node")]
+        name: String,
+    },
+    /// Show current node identity, public key, and credential verification
+    Show,
+    /// Sign an arbitrary message with node's private key
+    Sign { message: String },
+    /// Verify a signature against a public key
+    Verify {
+        pubkey: String,
+        message: String,
+        signature: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum SkillCommands {
     /// List all built-in protocol and gate skills
     List,
@@ -101,6 +131,13 @@ enum SkillCommands {
         #[arg(long, default_value = "all")]
         harness: String,
     },
+}
+
+fn get_now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 fn main() -> Result<()> {
@@ -166,6 +203,20 @@ fn main() -> Result<()> {
         Commands::Work { task_id } => {
             let repo_root = GitInspector::find_repo_root(&current_dir)?;
             let worktree_dir = repo_root.join(".vwl").join("worktrees").join(&task_id);
+            if !worktree_dir.exists() {
+                std::fs::create_dir_all(&worktree_dir)?;
+                let _ = std::process::Command::new("git")
+                    .args([
+                        "worktree",
+                        "add",
+                        "-B",
+                        &format!("task/{}", task_id),
+                        worktree_dir.to_str().unwrap(),
+                        "HEAD",
+                    ])
+                    .current_dir(&repo_root)
+                    .output();
+            }
             println!(
                 "Assigned task {} to isolated worktree at {}",
                 task_id,
@@ -205,6 +256,93 @@ fn main() -> Result<()> {
                     "Launching independent verifier for commit {} using harness '{}' with args: {:?}",
                     commit, harness, extra_args
                 );
+            }
+        },
+
+        Commands::Node { cmd } => match cmd {
+            NodeCommands::Init { role, name } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let identity_dir = repo_root.join(".vwl").join("identity");
+                fs::create_dir_all(&identity_dir)?;
+
+                let keypair = NodeKeypair::generate();
+                let key_path = identity_dir.join("node.key");
+                fs::write(&key_path, keypair.to_hex())?;
+
+                let now = get_now_secs();
+                let credential = NodeCredential::new(&keypair, &role, &name, now);
+                let cred_yaml = serde_yaml::to_string(&credential)
+                    .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                let cred_path = identity_dir.join("credential.yaml");
+                fs::write(&cred_path, cred_yaml)?;
+
+                println!("Initialized Node Identity (Gate 1):");
+                println!("  Node ID:     {}", credential.node_id);
+                println!("  Public Key:  {}", credential.public_key);
+                println!("  Role:        {}", credential.role);
+                println!("  Name:        {}", credential.display_name);
+                println!("  Key Saved:   {}", key_path.display());
+                println!("  Cred Saved:  {}", cred_path.display());
+            }
+
+            NodeCommands::Show => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let cred_path = repo_root
+                    .join(".vwl")
+                    .join("identity")
+                    .join("credential.yaml");
+                if !cred_path.exists() {
+                    return Err(VwlError::InvalidTask(
+                        "Node identity not found. Run 'vwl node init' first.".to_string(),
+                    ));
+                }
+                let yaml_str = fs::read_to_string(&cred_path)?;
+                let cred: NodeCredential = serde_yaml::from_str(&yaml_str)
+                    .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                let is_valid = cred.verify()?;
+
+                println!("Active VWL Node Credential:");
+                println!("  Node ID:      {}", cred.node_id);
+                println!("  Public Key:   {}", cred.public_key);
+                println!("  Role:         {}", cred.role);
+                println!("  Name:         {}", cred.display_name);
+                println!("  Created At:   {}", cred.created_at);
+                println!(
+                    "  Signature:    {} [{}]",
+                    cred.signature,
+                    if is_valid {
+                        "VALID"
+                    } else {
+                        "INVALID/TAMPERED"
+                    }
+                );
+            }
+
+            NodeCommands::Sign { message } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let key_path = repo_root.join(".vwl").join("identity").join("node.key");
+                if !key_path.exists() {
+                    return Err(VwlError::InvalidTask(
+                        "Node key not found. Run 'vwl node init' first.".to_string(),
+                    ));
+                }
+                let hex_str = fs::read_to_string(&key_path)?.trim().to_string();
+                let keypair = NodeKeypair::from_hex(&hex_str)?;
+                let sig = keypair.sign_message(message.as_bytes());
+                println!("{}", sig);
+            }
+
+            NodeCommands::Verify {
+                pubkey,
+                message,
+                signature,
+            } => {
+                let valid = verify_signature(&pubkey, message.as_bytes(), &signature)?;
+                if valid {
+                    println!("Signature VALID for public key {}", pubkey);
+                } else {
+                    println!("Signature INVALID for public key {}", pubkey);
+                }
             }
         },
 

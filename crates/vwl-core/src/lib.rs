@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod decision;
 pub mod error;
 pub mod git;
+pub mod identity;
 pub mod ledger;
 pub mod proof;
 pub mod replay;
@@ -16,6 +17,9 @@ pub use analytics::{
 pub use decision::{Decision, DecisionEngine, DecisionOutcome};
 pub use error::{Result, VwlError};
 pub use git::{GitInspector, GitRepoInfo};
+pub use identity::{
+    verify_signature, NodeCredential, NodeKeypair, ProjectCredential, SignedObject,
+};
 pub use ledger::LocalLedger;
 pub use proof::{Proof, ProofEvidence, ProofType, Verdict};
 pub use replay::{ReplayEngine, ReplayState};
