@@ -7,6 +7,6 @@
     "build": "if command -v forge >/dev/null 2>&1 || [ -x \"$HOME/.config/.foundry/bin/forge\" ]; then export PATH=\"$PATH:$HOME/.config/.foundry/bin\"; forge build; else echo 'Foundry forge not found, skipping EVM build'; fi"
   },
   "devDependencies": {
-    "solhint": "^4.1.1"
+    "solhint": "^6.2.5"
   }
 }
