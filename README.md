@@ -6,8 +6,10 @@
 [![IaC Check](https://github.com/horia-ai/vwl/actions/workflows/iac.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/iac.yml)
 [![Mutation Testing Gate](https://github.com/horia-ai/vwl/actions/workflows/mutation-testing.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/mutation-testing.yml)
 [![Security & Secrets](https://github.com/horia-ai/vwl/actions/workflows/security.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/security.yml)
+[![Publish Package](https://github.com/horia-ai/vwl/actions/workflows/publish-package.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/publish-package.yml)
 [![GitHub Pages](https://github.com/horia-ai/vwl/actions/workflows/gh-pages.yml/badge.svg)](https://horia-ai.github.io/vwl/)
 [![Analytics Dashboard](https://img.shields.io/badge/GitHub%20Pages-Analytics%20%26%20REP-success)](https://horia-ai.github.io/vwl/analytics.html)
+[![DEX Testnet Portal](https://img.shields.io/badge/DEX%20Guide-Token--Gated-purple)](https://horia-ai.github.io/vwl/dex-guide.html)
 [![Project Board](https://img.shields.io/badge/GitHub%20Project-VWL%20Board-blue)](https://github.com/orgs/horia-ai/projects/1)
 
 ---
@@ -18,6 +20,9 @@
 
 - **Small Git-native Work Units**: Work is scoped into bounded, falsifiable hypothesis units.
 - **Independent Verification**: Evaluated by a bounded verifier with strictly zero conversational context from the implementer.
+- **Pluggable Agent Harnesses**: Support for OpenCode, Claude Code (`.claude/skills/`), GitHub Copilot (`.github/copilot-instructions.md`), and custom runtime harnesses.
+- **Dynamic Skill Injection**: Auto-configure repo-level gate rules and behavioral protocols via `vwl skill install`.
+- **NPX Distribution**: Direct execution without manual cloning or toolchain configuration via `npx @horia-ai/vwl`.
 - **Separation of Authority**:
   - **Mutable Discovery Plane (GitHub)**: Issues, labels, topic discovery (`topic:vwl-project`). *Zero financial authority.*
   - **Authoritative Cryptographic Plane**: Immutable Task, WorkUnit, Proof, and Decision DTOs recorded append-only in `.vwl/ledger/`.
@@ -35,24 +40,28 @@
 │   ├── workflows/
 │   │   ├── ci.yml                 # Rust & Node tests, clippy, fmt, typecheck
 │   │   ├── mutation-testing.yml   # Stryker mutation testing gate (>= 80%)
+│   │   ├── publish-package.yml    # Build & publish @horia-ai/vwl to GitHub Packages
 │   │   ├── security.yml           # Gitleaks secret scanning & audit
 │   │   └── gh-pages.yml           # GitHub Pages deployment
 │   ├── ISSUE_TEMPLATE/
 │   └── pull_request_template.md
 ├── crates/
-│   ├── vwl-core/                  # Core Rust engine: DTOs, Ledger, Replay, Git identity
-│   ├── vwl-cli/                   # vwl CLI binary: status, task, work, replay, worker
+│   ├── vwl-core/                  # Core Rust engine: DTOs, Ledger, Replay, Git identity, Skills
+│   ├── vwl-cli/                   # vwl CLI binary: status, task, work, replay, worker, skill, report
 │   └── vwl-tui/                   # Ratatui Terminal UI shell
 ├── packages/
+│   ├── vwl/                       # @horia-ai/vwl executable NPX runner package
 │   ├── stripe-mcp/                # Stripe Model Context Protocol (MCP) server & fiat onramp
-│   └── opencode-harness/          # Bounded worker and independent verifier agent harness
+│   └── opencode-harness/          # Pluggable harness adapters (OpenCode, Claude, Copilot)
 ├── contracts/                     # Solidity smart contracts (Foundry workspace)
-│   ├── contracts/                 # NodeRegistry, EngagementEscrow, VestingSettlement
+│   ├── contracts/                 # WorkToken, MockUSDC, NodeRegistry, EngagementEscrow
+│   ├── test/                      # DEXPoolIntegration.t.sol (Uniswap v3 constant product)
 │   └── foundry.toml
 ├── experiment/                    # Bootstrap experiment ledger
 │   ├── hypothesis.yaml            # H-CORE, H-INDEPENDENCE, H-COMPOSITION, H-PORTABILITY
 │   └── work-units/                # Bounded Work Unit manifests
-└── docs/                          # GitHub Pages interactive documentation
+├── iac/                           # Infrastructure as Code (Terraform for GitHub teams & projects)
+└── docs/                          # GitHub Pages interactive documentation & token-gated DEX portal
 ```
 
 ---
@@ -77,7 +86,22 @@ VWL strictly adheres to a sequential 11-gate implementation sequence:
 
 ## 🛠️ Quickstart
 
-### 1. Build and Run Rust CLI
+### 1. Instant Execution via NPX
+```bash
+# Run status check directly without local installation
+npx @horia-ai/vwl status
+
+# Generate contributor effectiveness & cost allocation report
+npx @horia-ai/vwl report
+
+# List available protocol skills
+npx @horia-ai/vwl skill list
+
+# Inject TDD & mutation testing skills into current repo (Claude, Copilot, OpenCode)
+npx @horia-ai/vwl skill install tdd-mutation-testing --harness all
+```
+
+### 2. Build and Run Native Rust CLI
 ```bash
 # Build the workspace
 cargo build
@@ -91,7 +115,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 # Check repository status and canonical base
 cargo run -p vwl-cli -- status
 
-# Generate contributor effectiveness, REP, and cost allocation report in the terminal
+# Generate contributor effectiveness, REP, and cost allocation report in terminal
 cargo run -p vwl-cli -- report
 
 # Export report to GitHub Pages dashboard (docs/data/ledger_report.json)
@@ -101,12 +125,27 @@ cargo run -p vwl-cli -- report --gh-pages
 cargo run -p vwl-cli -- replay
 ```
 
-### 2. TypeScript / MCP Packages
+### 3. Agent Harness & Multi-Harness Skill Management
+```bash
+# List built-in protocol skills
+vwl skill list
+
+# Install independent verifier skill for Claude Code (.claude/skills/)
+vwl skill install bounded-verifier --harness claude
+
+# Install economic conservation rules for GitHub Copilot (.github/copilot-instructions.md)
+vwl skill install economic-conservation --harness copilot
+
+# Run developer worker using selected agent harness
+vwl worker developer TASK-2026-001 --harness opencode
+```
+
+### 4. TypeScript / MCP Packages & Mutation Testing
 ```bash
 # Install dependencies
 npm install
 
-# Run Vitest test suite
+# Run Vitest test suite across all packages
 npm test
 
 # Run Stryker mutation testing (Threshold >= 80%)

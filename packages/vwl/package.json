@@ -1,0 +1,33 @@
+{
+  "name": "@horia-ai/vwl",
+  "version": "0.1.0",
+  "description": "Virtual Work Ledger (VWL) — Decentralized Autonomous Labor Protocol CLI",
+  "type": "module",
+  "bin": {
+    "vwl": "./bin/vwl.js"
+  },
+  "main": "./bin/vwl.js",
+  "scripts": {
+    "test": "vitest run",
+    "start": "node ./bin/vwl.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "keywords": [
+    "vwl",
+    "labor-protocol",
+    "autonomous-agents",
+    "opencode",
+    "claude",
+    "copilot",
+    "ledger",
+    "npx"
+  ],
+  "author": "Alex Trifan <trifan.alex.criss@gmail.com>",
+  "license": "MIT OR Apache-2.0",
+  "devDependencies": {
+    "vitest": "^1.2.0"
+  }
+}

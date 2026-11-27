@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use vwl_core::{git::GitInspector, ledger::LocalLedger, replay::ReplayEngine, task::Task, Result};
+use vwl_core::{
+    git::GitInspector, ledger::LocalLedger, replay::ReplayEngine, skills, task::Task, Result,
+};
 
 #[derive(Parser)]
 #[command(name = "vwl")]
@@ -49,6 +51,12 @@ enum Commands {
         cmd: WorkerCommands,
     },
 
+    /// Manage and inject agent skills into repository (.claude, .github, .vwl)
+    Skill {
+        #[command(subcommand)]
+        cmd: SkillCommands,
+    },
+
     /// Query or scan local market discovery projections (Gate 2)
     Market,
 }
@@ -64,14 +72,34 @@ enum WorkerCommands {
     /// Execute developer agent with bounded context (WU-G0-010)
     Developer {
         task_id: String,
+        /// Target harness: opencode, claude, copilot, or custom (default: opencode)
+        #[arg(long, default_value = "opencode")]
+        harness: String,
         #[arg(last = true)]
-        harness: Vec<String>,
+        extra_args: Vec<String>,
     },
     /// Execute independent verifier with no implementer chat (WU-G0-011)
     Verifier {
         commit: String,
+        /// Target harness: opencode, claude, copilot, or custom (default: opencode)
+        #[arg(long, default_value = "opencode")]
+        harness: String,
         #[arg(last = true)]
-        harness: Vec<String>,
+        extra_args: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillCommands {
+    /// List all built-in protocol and gate skills
+    List,
+    /// Install skill into repository for target harness
+    Install {
+        /// Skill name (e.g., tdd-mutation-testing, bounded-verifier, economic-conservation, dex-liquidity-rules)
+        name: String,
+        /// Target harness: opencode, claude, copilot, or all (default: all)
+        #[arg(long, default_value = "all")]
+        harness: String,
     },
 }
 
@@ -158,17 +186,45 @@ fn main() -> Result<()> {
         }
 
         Commands::Worker { cmd } => match cmd {
-            WorkerCommands::Developer { task_id, harness } => {
+            WorkerCommands::Developer {
+                task_id,
+                harness,
+                extra_args,
+            } => {
                 println!(
-                    "Launching bounded developer worker for task {} using harness: {:?}",
-                    task_id, harness
+                    "Launching bounded developer worker for task {} using harness '{}' with args: {:?}",
+                    task_id, harness, extra_args
                 );
             }
-            WorkerCommands::Verifier { commit, harness } => {
+            WorkerCommands::Verifier {
+                commit,
+                harness,
+                extra_args,
+            } => {
                 println!(
-                    "Launching independent verifier for commit {} using harness: {:?}",
-                    commit, harness
+                    "Launching independent verifier for commit {} using harness '{}' with args: {:?}",
+                    commit, harness, extra_args
                 );
+            }
+        },
+
+        Commands::Skill { cmd } => match cmd {
+            SkillCommands::List => {
+                println!("Available VWL Protocol & Gate Skills:");
+                for (name, desc) in skills::list_skills() {
+                    println!("  - {:<24} : {}", name, desc);
+                }
+            }
+            SkillCommands::Install { name, harness } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let installed = skills::install_skill(&repo_root, &name, &harness)?;
+                println!(
+                    "Successfully installed skill '{}' for harness '{}':",
+                    name, harness
+                );
+                for path in installed {
+                    println!("  -> {}", path.display());
+                }
             }
         },
 
