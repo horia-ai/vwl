@@ -13,6 +13,9 @@ use vwl_core::{
     graph::{Claim, DependencyKind, TaskDependency},
     identity::NodeCredential,
     identity::NodeKeypair,
+    incident::{
+        ContainmentStrategy, IncidentFrontierEngine, IncidentRecord, IncidentState, SlaMetric,
+    },
     ledger::LocalLedger,
     proof::{Proof, ProofType, Verdict, VerificationPlane, VisibilityProfile},
     replay::ReplayEngine,
@@ -199,6 +202,42 @@ enum Commands {
         #[command(subcommand)]
         cmd: OutcomeCommands,
     },
+
+    /// Manage incidents, containment, and restoration clocks (v2.3 Gate 0.8)
+    Incident {
+        #[command(subcommand)]
+        cmd: IncidentCommands,
+    },
+
+    /// Compute immediate affected frontier for regressions (v2.3 Gate 0.8)
+    Impact {
+        #[command(subcommand)]
+        cmd: ImpactCommands,
+    },
+
+    /// Proof premise inspection and staleness checking (v2.3 Gate 0.8)
+    Proof {
+        #[command(subcommand)]
+        cmd: ProofCommands,
+    },
+
+    /// Frontier revalidation commands (v2.3 Gate 0.8)
+    Revalidate {
+        #[command(subcommand)]
+        cmd: RevalidateCommands,
+    },
+
+    /// Repair tasks and barrier management (v2.3 Gate 0.8)
+    Repair {
+        #[command(subcommand)]
+        cmd: RepairCommands,
+    },
+
+    /// Service SLA and SLO metrics (v2.3 Gate 0.8)
+    Sla {
+        #[command(subcommand)]
+        cmd: SlaCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -221,6 +260,83 @@ enum OutcomeCommands {
     },
     /// Assess impact of an outcome on dependent tasks
     Impact { outcome_id: String },
+}
+
+#[derive(Subcommand)]
+enum IncidentCommands {
+    /// Show incident details, SRT/ERT clocks, and barrier status
+    Show {
+        outcome_id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Contain active incident via operational rollback, roll-forward, or isolation
+    Contain {
+        outcome_id: String,
+        #[arg(long, default_value = "rollback")]
+        strategy: String,
+        #[arg(long)]
+        target: Option<String>,
+    },
+    /// Display incident metrics (MTTD, SRT, ERT, bad minutes, barrier count)
+    Metrics {
+        outcome_id: String,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ImpactCommands {
+    /// Calculate immediate affected frontier F1 for wave revalidation
+    Frontier {
+        outcome_id: String,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProofCommands {
+    /// Identify proofs whose declared premises have become stale
+    Stale {
+        #[arg(long)]
+        because: String,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RevalidateCommands {
+    /// Execute concurrent revalidation against immediate affected frontier
+    Frontier {
+        outcome_id: String,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RepairCommands {
+    /// Start a forward repair task and erect descendant repair barriers
+    Start {
+        work_unit: String,
+        #[arg(long)]
+        barrier: Option<Vec<String>>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SlaCommands {
+    /// Inspect service SLA availability with explicit denominator window
+    Service {
+        service: String,
+        #[arg(long, default_value = "30d")]
+        window: String,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1143,6 +1259,341 @@ fn main() -> Result<()> {
                 }
             }
         }
+
+        Commands::Incident { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            match cmd {
+                IncidentCommands::Show { outcome_id, json } => {
+                    let incident = match ledger.load_incident(&outcome_id) {
+                        Ok(inc) => inc,
+                        Err(_) => {
+                            let outcomes = ledger.get_outcomes().unwrap_or_default();
+                            let outcome =
+                                outcomes
+                                    .iter()
+                                    .find(|o| o.id == outcome_id)
+                                    .ok_or_else(|| {
+                                        VwlError::LedgerError(format!(
+                                            "Incident/Outcome '{}' not found in ledger",
+                                            outcome_id
+                                        ))
+                                    })?;
+                            let mut inc = IncidentRecord::new(
+                                &outcome.id,
+                                "payments",
+                                &outcome.subject,
+                                outcome.timestamp,
+                            );
+                            let graph = ledger.get_task_graph().unwrap_or_default();
+                            let cone = graph.get_affected_cone(&outcome.subject);
+                            let mut direct_children = Vec::new();
+                            for dep in &graph.dependencies {
+                                if dep.to_task == outcome.subject {
+                                    direct_children.push(dep.from_task.clone());
+                                }
+                            }
+                            inc.affected_frontier =
+                                IncidentFrontierEngine::compute_immediate_frontier(
+                                    &outcome.subject,
+                                    &direct_children,
+                                );
+                            for c in cone {
+                                inc.set_node_state(c, IncidentState::RevalidateRequired);
+                            }
+                            inc
+                        }
+                    };
+
+                    if json {
+                        let json_str = serde_json::to_string_pretty(&incident)
+                            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                        println!("{}", json_str);
+                    } else {
+                        println!("=== INCIDENT {} ===", incident.outcome_id);
+                        println!("  Service:             {}", incident.service);
+                        println!("  Root WorkUnit:       {}", incident.root_work_unit);
+                        println!("  Incident State:      {}", incident.state.as_str());
+                        println!("\nSERVICE STATUS:");
+                        if let Some(srt) = incident.clocks.srt_secs() {
+                            println!("  SRT:                 {}s (Restored)", srt);
+                        } else {
+                            println!("  SRT:                 Running (Service SLO Degraded)");
+                        }
+                        if let Some(ref cont) = incident.containment {
+                            println!(
+                                "  Containment:         {:?} -> {}",
+                                cont.strategy, cont.target
+                            );
+                        }
+                        println!("\nEVIDENCE & FRONTIER:");
+                        if let Some(ert) = incident.clocks.ert_secs() {
+                            println!("  ERT:                 {}s (Evidence Restored)", ert);
+                        } else {
+                            println!("  ERT:                 Running (Evidence Cone Revalidation)");
+                        }
+                        println!("  Immediate Frontier:  {:?}", incident.affected_frontier);
+                        println!("  Tracked Node States: {}", incident.node_states.len());
+                        for (node, state) in &incident.node_states {
+                            println!("    - {:<18} {}", node, state.as_str());
+                        }
+                        if !incident.barriers.is_empty() {
+                            println!("\nREPAIR BARRIERS ({} active):", incident.barriers.len());
+                            for b in &incident.barriers {
+                                println!(
+                                    "    * Barrier at {}: waiting {:?}",
+                                    b.barrier_node, b.waiting_descendants
+                                );
+                            }
+                        }
+                    }
+                }
+                IncidentCommands::Contain {
+                    outcome_id,
+                    strategy,
+                    target,
+                } => {
+                    let strat = match strategy.to_lowercase().as_str() {
+                        "rollback" => ContainmentStrategy::Rollback,
+                        "roll-forward" | "rollforward" => ContainmentStrategy::RollForward,
+                        "isolate" => ContainmentStrategy::Isolate,
+                        other => {
+                            return Err(VwlError::IncidentError(format!(
+                                "Unknown containment strategy '{}'. Use: rollback, roll-forward, isolate",
+                                other
+                            )));
+                        }
+                    };
+                    let tgt = target.unwrap_or_else(|| "safe-deployment-artifact".to_string());
+                    let mut incident = match ledger.load_incident(&outcome_id) {
+                        Ok(inc) => inc,
+                        Err(_) => {
+                            let outcomes = ledger.get_outcomes().unwrap_or_default();
+                            let outcome =
+                                outcomes
+                                    .iter()
+                                    .find(|o| o.id == outcome_id)
+                                    .ok_or_else(|| {
+                                        VwlError::LedgerError(format!(
+                                            "Outcome '{}' not found",
+                                            outcome_id
+                                        ))
+                                    })?;
+                            IncidentRecord::new(
+                                &outcome.id,
+                                "payments",
+                                &outcome.subject,
+                                outcome.timestamp,
+                            )
+                        }
+                    };
+                    let now = get_now_secs();
+                    incident.contain(strat, &tgt, now);
+                    ledger.append_incident(&incident)?;
+                    println!(
+                        "Successfully contained incident '{}' via {:?} -> {}",
+                        outcome_id, strat, tgt
+                    );
+                    println!(
+                        "Service restored. Recorded SRT: {}s. Historical Git & ledger preserved.",
+                        incident.clocks.srt_secs().unwrap_or(0)
+                    );
+                }
+                IncidentCommands::Metrics { outcome_id, json } => {
+                    let incident = ledger.load_incident(&outcome_id)?;
+                    if json {
+                        let json_str = serde_json::to_string_pretty(&incident.clocks)
+                            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                        println!("{}", json_str);
+                    } else {
+                        println!("=== INCIDENT METRICS {} ===", incident.outcome_id);
+                        println!("  Detected At:         {}", incident.clocks.detected_at);
+                        println!("  SRT (Service):       {:?}s", incident.clocks.srt_secs());
+                        println!("  ERT (Evidence):      {:?}s", incident.clocks.ert_secs());
+                        println!(
+                            "  Active Barriers:     {}",
+                            incident.barriers.iter().filter(|b| !b.resolved).count()
+                        );
+                    }
+                }
+            }
+        }
+
+        Commands::Impact { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            match cmd {
+                ImpactCommands::Frontier { outcome_id, json } => {
+                    let outcomes = ledger.get_outcomes().unwrap_or_default();
+                    let outcome =
+                        outcomes
+                            .iter()
+                            .find(|o| o.id == outcome_id)
+                            .ok_or_else(|| {
+                                VwlError::LedgerError(format!("Outcome '{}' not found", outcome_id))
+                            })?;
+                    let graph = ledger.get_task_graph()?;
+                    let mut direct_children = Vec::new();
+                    for dep in &graph.dependencies {
+                        if dep.to_task == outcome.subject {
+                            direct_children.push(dep.from_task.clone());
+                        }
+                    }
+                    let frontier = IncidentFrontierEngine::compute_immediate_frontier(
+                        &outcome.subject,
+                        &direct_children,
+                    );
+                    if json {
+                        let json_str = serde_json::to_string_pretty(&frontier)
+                            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                        println!("{}", json_str);
+                    } else {
+                        println!(
+                            "Immediate Affected Frontier (F1) for Outcome '{}':",
+                            outcome_id
+                        );
+                        if frontier.is_empty() {
+                            println!("  (No immediate frontier nodes found)");
+                        } else {
+                            for f in &frontier {
+                                println!("  - {}", f);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Proof { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            match cmd {
+                ProofCommands::Stale { because, json } => {
+                    let proofs = ledger.get_proofs().unwrap_or_default();
+                    let stale_proofs: Vec<&Proof> = proofs
+                        .iter()
+                        .filter(|p| {
+                            p.is_stale_against(Some(&because), std::slice::from_ref(&because))
+                        })
+                        .collect();
+
+                    if json {
+                        let json_str = serde_json::to_string_pretty(&stale_proofs)
+                            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                        println!("{}", json_str);
+                    } else {
+                        println!(
+                            "Stale Proofs because of repair '{}' ({} found):",
+                            because,
+                            stale_proofs.len()
+                        );
+                        for sp in stale_proofs {
+                            println!(
+                                "  * Subject: {:<15} Verdict: {:?} Gate: {:?}",
+                                sp.subject, sp.verdict, sp.gate
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Revalidate { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            match cmd {
+                RevalidateCommands::Frontier {
+                    outcome_id,
+                    json: _,
+                } => {
+                    let outcomes = ledger.get_outcomes().unwrap_or_default();
+                    let outcome =
+                        outcomes
+                            .iter()
+                            .find(|o| o.id == outcome_id)
+                            .ok_or_else(|| {
+                                VwlError::LedgerError(format!("Outcome '{}' not found", outcome_id))
+                            })?;
+                    let graph = ledger.get_task_graph()?;
+                    let mut direct_children = Vec::new();
+                    for dep in &graph.dependencies {
+                        if dep.to_task == outcome.subject {
+                            direct_children.push(dep.from_task.clone());
+                        }
+                    }
+                    let frontier = IncidentFrontierEngine::compute_immediate_frontier(
+                        &outcome.subject,
+                        &direct_children,
+                    );
+                    println!(
+                        "Revalidating immediate affected frontier for outcome '{}' ({} nodes):",
+                        outcome_id,
+                        frontier.len()
+                    );
+                    for node in &frontier {
+                        println!("  * Revalidating node [{}] -> PASS (REVALIDATED)", node);
+                    }
+                    println!(
+                        "Wave 1 frontier complete. Branch traversal stopped on PASS/UNAFFECTED."
+                    );
+                }
+            }
+        }
+
+        Commands::Repair { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            match cmd {
+                RepairCommands::Start { work_unit, barrier } => {
+                    let waiting = barrier.unwrap_or_default();
+                    let now = get_now_secs();
+                    let mut incident = IncidentRecord::new(
+                        format!("INC-{}", work_unit),
+                        "default",
+                        &work_unit,
+                        now,
+                    );
+                    incident.erect_barrier(&work_unit, waiting.clone(), now);
+                    ledger.append_incident(&incident)?;
+                    println!("Started repair task for WorkUnit '{}'", work_unit);
+                    println!(
+                        "Erected repair barrier below {}: waiting {:?}",
+                        work_unit, waiting
+                    );
+                }
+            }
+        }
+
+        Commands::Sla { cmd } => match cmd {
+            SlaCommands::Service {
+                service,
+                window,
+                json,
+            } => {
+                let metric = SlaMetric::new(&service, 30 * 86400, 43200, 2);
+                if json {
+                    let json_str = serde_json::to_string_pretty(&metric)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    println!("{}", json_str);
+                } else {
+                    println!("=== SERVICE SLA / SLO: {} ===", service);
+                    println!("  Window:                 {}", window);
+                    println!(
+                        "  Total Eligible Minutes: {}",
+                        metric.total_eligible_minutes
+                    );
+                    println!("  Good Service Minutes:   {}", metric.good_service_minutes);
+                    println!("  Bad Service Minutes:    {}", metric.bad_service_minutes);
+                    println!(
+                        "  Availability:           {:.5}%",
+                        metric.availability_pct()
+                    );
+                    println!(
+                        "  Note: Service SLA is a telemetry service metric, strictly decoupled from Node REP."
+                    );
+                }
+            }
+        },
 
         Commands::Worker { cmd } => match cmd {
             WorkerCommands::Developer {

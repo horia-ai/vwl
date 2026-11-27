@@ -1,11 +1,172 @@
-# Virtual Work Ledger (VWL) v2.2 — Complete Authoritative Specification Bundle
+# VWL Wiki-LLM — Authoritative Protocol & Architecture Knowledge Base
 
-> This file contains the complete, unabridged, authoritative specification documents governing the VWL v2.2 protocol, Verification Factory, CLI/GitHub interactions, and Economics Settlement.
-> Intended for direct consumption by Large Language Models, reasoning engines, and autonomous coding agents.
+Welcome to the **VWL (Verified Work Ledger) Wiki-LLM**. This directory contains the complete, authoritative, and unabridged specifications governing the VWL v2.2 decentralized autonomous work and evidence protocol.
 
-================================================================================
-PART 1: VWL v2.2 CORE PROTOCOL & VERIFICATION FACTORY SPECIFICATION
-================================================================================
+This wiki is specifically curated and indexed for **Large Language Models (LLMs)**, autonomous coding agents (Gemini, OpenCode, Claude, Copilot), verifier harnesses, and protocol engineers.
+
+---
+
+## 📚 Document Architecture & Index
+
+| File | Document Title | Scope & Authority |
+| :--- | :--- | :--- |
+| **[01-protocol-core-and-verification-factory.md](01-protocol-core-and-verification-factory.md)** | **VWL v2.2 Core Protocol & Verification Factory** | Authoritative protocol specification. Governs the 4-Graph model (Intent, Provenance, Evidence, Impact), Work Units (commit sequences & tree effects), Verification Factory (planes, visibility profiles, shadow contracts), Deterministic Decision Engine, and Replay. |
+| **[02-protocol-cli-and-github-projection.md](02-protocol-cli-and-github-projection.md)** | **VWL v2.2 Protocol CLI & GitHub Projection** | Authoritative CLI, TUI, and GitHub WorkHost interaction contract. Covers `vwl` subcommands (`work`, `verify`, `graph`, `repometer`, `outcome`), GitHub issue projection, and Work Frontier synchronization. |
+| **[03-economics-and-settlement.md](03-economics-and-settlement.md)** | **VWL Economics & Settlement v1.1** | Authoritative economic design. Governs REP scoring formulas, WORK wage rates, dual-signed Escrow Engagements, Vesting schedules, Smart Contract equivalence (Solidity differential testing), and DEX liquidity. |
+| **[04-bootstrap-work-ledger.md](04-bootstrap-work-ledger.md)** | **VWL Bootstrap Work Ledger v1.1** | Authoritative bootstrap execution ledger. Defines the experimental falsification gates (G0 through G10) used to build and verify VWL using VWL's own evidence discipline. |
+| **[05-incident-ripple-and-sla-protocol-v2.3.md](05-incident-ripple-and-sla-protocol-v2.3.md)** | **VWL v2.3 Incident Ripple, Roll-Forward & SLA Protocol** | Authoritative v2.3 addendum. Governs the incident state machine (`CLEAN`, `SUSPECT`, `REVALIDATE_REQUIRED`, `REPAIR_REQUIRED`, `WAITING_ON_REPAIR`, `INVALIDATED`, `REVALIDATED`), Proof premise staleness, impact frontier, repair barriers, wave revalidation, runtime containment, SRT vs ERT restoration clocks, and validator obligation. |
+| **[06-incident-cli-and-github-ux-v2.3.md](06-incident-cli-and-github-ux-v2.3.md)** | **VWL v2.3 Incident CLI & GitHub UX** | Authoritative v2.3 CLI commands (`vwl incident`, `vwl impact frontier`, `vwl proof stale`, `vwl revalidate frontier`, `vwl repair start`, `vwl sla service`), TUI incident view, and GitHub projection rules. |
+| **[07-economics-and-rep-incident-alignment-v1.2.md](07-economics-and-rep-incident-alignment-v1.2.md)** | **VWL Economics & REP Incident Alignment v1.2** | Governs REP consequences during incidents. Upholds that ripple staleness != negative REP, decouples node REP from service SLA/SLO, bounds validator misses to declared verification obligations, and isolates skill/config attribution. |
+| **[08-incident-simulation-report-v2.3.md](08-incident-simulation-report-v2.3.md)** | **VWL v2.3 One-Year Incident Simulation Report** | Empirical stress testing report across 2,487 Work Units, 12 services, 18 nodes, and 30 incidents validating SRT/ERT separation, repair barriers, and zero ripple blame. |
+| **[09-bootstrap-work-ledger-incident-extension-v1.2.md](09-bootstrap-work-ledger-incident-extension-v1.2.md)** | **VWL Bootstrap Work Ledger v1.2 — Gate 0.8** | Gate 0.8 Work Units (WU-G0.8-001 through WU-G0.8-012) for falsifying the incident ripple and evidence restoration protocol. |
+
+---
+
+## ⚡ Core Invariants (For LLMs & Autonomous Workers)
+
+When implementing, verifying, or auditing any task in the VWL ecosystem, agents MUST uphold these invariant rules:
+
+### 1. Zero-Chat Verifier Invariant
+```text
+Verifier Input: (Task, Acceptance Criteria, Canonical Base, Candidate Commit/Diff, Test Capability)
+Verifier PROHIBITED: Developer conversation history, chain-of-thought, apologies, self-evaluations.
+```
+*Why:* If verification requires reading the developer's chat logs, the code is not independently verifiable.
+
+### 2. Candidate Isolation Invariant ("Judge cannot silently rewrite defendant")
+```text
+Verifier Output: Structured Proof OR Adversarial Challenge + Reproducer Artifact.
+Verifier PROHIBITED: Directly modifying, fixing, reformatting, or committing code to the candidate branch.
+```
+*Why:* If the judge fixes the candidate, the author did not produce the work, and the resulting commit provenance is falsified.
+
+### 3. Deterministic Decision Engine
+```text
+Authority = f(Proofs, Gate Policy).
+Model calls produce Proofs (evidence). Models DO NOT decide technical authority.
+```
+*Rule:*
+- All required gates PASS $\rightarrow$ `CONFIRMED`
+- Any required gate FAILS $\rightarrow$ `REJECTED`
+- Otherwise $\rightarrow$ `PENDING`
+
+### 4. Post-Confirmation Historical Invariant
+```text
+WU-A CONFIRMED @ t1 is permanent historical technical truth.
+A regression observed @ t2 appends an OUTCOME object.
+It strictly NEVER mutates or deletes historical Decision records.
+```
+
+### 5. Attribution Decoupling Invariant
+```text
+Outcome Observation != Node Blame.
+Attribution carries explicit confidence: High, Medium, Low, Unknown.
+```
+*Rule:* Low or Unknown confidence cannot be treated as proven fault by downstream REP or economic penalty systems.
+
+### 6. Forward-Only Repair
+```text
+Regressions DO NOT trigger git rollbacks or ledger rewriting.
+Regressions trigger forward-only repair:
+New Task -> New Claim -> New Candidate -> Verification -> Confirmed Cutover -> Resolution Outcome.
+```
+
+### 7. Repometer Denominator Binding
+```text
+Repometer evidence coverage MUST declare:
+- Target Git Tree SHA
+- Denominator LOC
+- Declared Methodology
+```
+*Prohibition:* Raw, ungrounded LOC claims are rejected. Repometer answers how much of the current canonical tree is backed by surviving evidence.
+
+### 8. Pure Functional Replay
+```text
+Canonical State = Replay(Git Repository + Append-Only Ledger)
+```
+*Standard:* A clean clone running `vwl replay` must reconstruct all four graphs, active claims, and derived canonical state with zero divergence, without network calls or database servers.
+
+### 9. Incident Ripple Uncertainty Invariant
+```text
+CONFIRMED W1 -> later Outcome(REGRESSION) -> Ripple propagates UNCERTAINTY, not retroactive rejection.
+```
+*Rule:* Historical `CONFIRMED` remains historical truth. Ripple membership alone (`SUSPECT`/`STALE`) strictly MUST NOT reduce Node REP.
+
+### 10. Two Restoration Clocks (SRT vs ERT)
+```text
+SRT: Time to restore user-facing service (containment, rollback, isolate, roll-forward).
+ERT: Time to restore complete evidence cone and canonical confidence.
+```
+*Rule:* Restoring service does not falsely mark stale evidence valid. Operational rollback does not rewrite canonical Git or ledger history.
+
+### 11. Repair Barrier Invariant
+```text
+If W2 requires code repair, descendants behind W2 become WAITING_ON_REPAIR until Repair-W2 is canonical.
+```
+*Rule:* Authoritative deep revalidation waits until upstream code repairs become canonical, preventing wasted verification cycles against changing state.
+
+### 12. Validator Obligation Boundary
+```text
+Negative validator evidence requires a demonstrable escape/miss INSIDE its declared verification obligation and visibility profile.
+```
+
+---
+
+## 🛠️ Quick Command Reference
+
+```bash
+# Core status & replay
+vwl status
+vwl replay
+
+# Work Frontier & Graph Inspection
+vwl frontier [--json]
+vwl graph intent
+vwl graph provenance
+vwl graph evidence
+vwl graph impact <task-id>
+
+# Task Execution & Verification
+vwl claim <task-id> --actor <node-id>
+vwl work <task-id>
+vwl submit <task-id> --candidate <sha>
+vwl verify plan <work-unit>
+vwl verify run <work-unit> --verifier gemini
+vwl verify challenge <challenge-id>
+
+# Evidence Coverage & Post-Confirmation Outcomes
+vwl repometer [--explain] [--json]
+vwl outcome list
+vwl outcome add <id> <subject> --type regression --severity high --evidence "<log>"
+vwl outcome impact <outcome-id>
+
+# Incident Ripple & Evidence Restoration (v2.3)
+vwl incident show <outcome-id>
+vwl incident contain <outcome-id> --strategy rollback|roll-forward|isolate
+vwl impact frontier <outcome-id>
+vwl proof stale --because <repair-id>
+vwl revalidate frontier <outcome-id>
+vwl repair start <work-unit>
+vwl incident metrics <outcome-id>
+vwl sla service <service-id> [--window 30d]
+
+# Economics & Settlement
+vwl economics show
+vwl economics deposit --project-id horia-ai/vwl --amount-usd 500
+vwl economics engage --project-id horia-ai/vwl --node-id <node> --amount-work 50000
+vwl report --gh-pages --json
+```
+
+---
+
+## 📜 License & Intellectual Property
+Use of these specifications and software is governed by the **[VWL Community Source-Available License](../../LICENSE)**:
+- ✅ **Permitted:** Viewing, inspection, local compilation, private execution, testing, evaluation, and contributing to the official repository.
+- ❌ **Prohibited:** Redistribution, distribution, mirroring, public hosting/SaaS cloning, commercial resale, or licensing for a fee.
+
+
+---
+
 
 # VWL v2.2 — Verified Work Ledger
 ## Verification Factory, Work Graph, Impact Graph, Repometer, Canonicalization and Replay
@@ -698,9 +859,9 @@ WU-2225 adversarial falsification suite
 
 **Git remembers changes. VWL remembers what was attempted, what was proven, what later failed, what remains covered, and why the current state is trusted.**
 
-================================================================================
-PART 2: VWL v2.2 PROTOCOL CLI & GITHUB PROJECTION SPECIFICATION
-================================================================================
+
+---
+
 
 # VWL v2.2 Protocol CLI & GitHub Projection
 ## CLI/TUI, GitHub WorkHost, Verification Factory, Work Frontier, Repometer and Market Projection
@@ -952,9 +1113,9 @@ No remaining internal CLI/protocol contradiction identified. Residual risks: Git
 
 > The CLI/TUI and GitHub are views/controllers over VWL objects. They may create proposed intent/evidence through explicit commands, but they never become the hidden database of truth. Every status important to authority is reconstructable by replay.
 
-================================================================================
-PART 3: VWL ECONOMICS & SETTLEMENT v1.1 SPECIFICATION
-================================================================================
+
+---
+
 
 # VWL Economics & Settlement v1.1
 ## REP, WORK Wages, Project Accounts, Vesting, Funding, Liquidity, and Smart Contracts
@@ -1176,3 +1337,1086 @@ public liquidity optional and later-stage
 # 14. Final invariant
 
 > VWL technical truth flows one way into economics. Economics may reserve, earn and vest compensation based on versioned technical evidence, but money, REP, market demand and token state can never manufacture a technical PASS. Later Outcomes append evidence; economic consequences are bounded by signed Engagement terms and attribution confidence.
+
+
+---
+
+
+# VWL Bootstrap Work Ledger v1.1
+## Building VWL v2.2 using VWL's own evidence discipline
+
+**Status:** authoritative bootstrap execution ledger  
+**Supersedes:** Bootstrap Work Ledger v1.0  
+**Target protocol:** VWL v2.2  
+
+# 0. Bootstrap rule
+
+The original Gate-0 remains valid in spirit but its object assumptions changed. We still build the smallest falsifiable core first. We do **not** implement REP/WORK economics before the engineering protocol survives.
+
+The bootstrap itself must exercise the protocol it creates.
+
+# 1. Gate sequence
+
+```text
+G0  Core authority + replay
+G0.5 Work graph + Frontier
+G0.6 Verification factory
+G0.7 Outcome/Impact/Repometer
+G1  Node + Project identity
+G2  GitHub WorkHost/discovery
+G3  CLI/TUI productization
+G4  REP experiments
+G5  Local economics (no blockchain)
+G6  Economic/Sybil simulations
+G7  Smart-contract equivalence
+G8  Wallet/chain UX
+G9  Optional fiat onramp
+G10 Optional productive liquidity
+```
+
+Later gates remain blocked until lower falsification gates pass.
+
+# 2. Updated bootstrap WorkUnit record
+
+Legacy:
+
+```yaml
+work_unit: WU-G0-001
+base: <sha>
+commit: <sha>
+```
+
+v1.1 bootstrap:
+
+```yaml
+work_unit: WU-G0-001
+base: <sha>
+commits:
+  - sha: <sha>
+    role: implementation
+    actor: bootstrap-worker
+candidate: <sha>
+spec_digest: <digest>
+dependency_snapshot: <digest>
+```
+
+Single-commit bootstrap WUs are valid as sequence length 1.
+
+# 3. Preserve original G0 units
+
+WU-G0-001 through WU-G0-003 remain materially unchanged:
+
+```text
+001 Rust workspace/CLI
+002 repository identity/canonical base
+003 immutable Task DTO
+```
+
+# 4. Replace WU-G0-004
+
+## WU-G0-004 — WorkUnit v2.2 DTO
+
+**Hypothesis:** bounded candidate work can be represented as base + ordered attributable commit sequence + candidate tree effect.
+
+Acceptance:
+
+```text
+sequence length >= 1
+all commits exist
+base exists
+candidate is final declared candidate
+actor/role provenance deterministic
+tree-effect digest deterministic
+legacy one-commit WU maps losslessly
+```
+
+# 5. Update WU-G0-005 — Proof DTO
+
+Add:
+
+```text
+gate
+plane: deterministic|judgment
+environment metadata where applicable
+visibility profile where applicable
+evidence references
+```
+
+Do not implement every gate yet.
+
+# 6. Preserve WU-G0-006 — deterministic Decision
+
+Still fundamental. AI/verifier output remains Proof, never authority.
+
+Add test that judgment Proofs are consumed through deterministic policy.
+
+# 7. Update WU-G0-007/008 — ledger + replay
+
+Replay must eventually support new objects, but first milestone remains:
+
+```text
+Task
+WorkUnit
+Proof
+Decision
+CanonicalState
+```
+
+Then later gates extend replay.
+
+# 8. Preserve WU-G0-009/010 — worktree + developer wrapper
+
+Developer wrapper targets Task and may produce multi-commit WU.
+
+# 9. Replace WU-G0-011 — independent verifier wrapper
+
+Command:
+
+```text
+vwl worker verifier <work-unit> -- <harness>
+```
+
+not `<commit>`.
+
+Verifier receives bounded judgment context and cannot mutate candidate.
+
+# 10. Preserve parallel/composition experiments
+
+WU-G0-012 through 019 remain conceptually valid with these changes:
+
+- candidates are WUs, not single commits;
+- composition operates on tree effects;
+- Challenges may reference verifier artifacts;
+- Spec drift uses dependency/affected-cone semantics once available.
+
+# 11. New Gate G0.5 — Work Graph / Frontier
+
+```text
+WU-G05-001 TaskDependency DTO
+WU-G05-002 DAG cycle validation
+WU-G05-003 dependency satisfaction
+WU-G05-004 derived READY/BLOCKED
+WU-G05-005 Work Frontier
+WU-G05-006 why-blocked
+WU-G05-007 Claim object/contention
+WU-G05-008 dependency snapshot in WU
+WU-G05-009 stale candidate revalidation
+WU-G05-010 Spec affected-cone propagation
+WU-G05-011 cancellation/UNSATISFIABLE
+WU-G05-012 replay DAG + Frontier
+```
+
+Hard stop if readiness cannot be replayed deterministically or cycles enter authority.
+
+# 12. New Gate G0.6 — Verification Factory
+
+```text
+WU-G06-001 ChangeProfile/RiskProfile
+WU-G06-002 VerificationPlan derivation
+WU-G06-003 deterministic gate interface
+WU-G06-004 judgment gate interface
+WU-G06-005 verifier visibility profiles
+WU-G06-006 VerifierArtifact isolation
+WU-G06-007 Challenge/reproducer flow
+WU-G06-008 Wiring Proof
+WU-G06-009 Test Integrity
+WU-G06-010 targeted mutation adapter
+WU-G06-011 UI verification profile
+WU-G06-012 deployment verification profile
+WU-G06-013 safe shadow-traffic contract
+```
+
+Required adversarial experiments:
+
+```text
+weak-test relaxation
+dead/unwired code
+black-box verifier
+verifier mutation attempt
+reproducer repair
+mutation survivor
+UI visual defect
+deployment-only defect
+safe shadow evidence
+```
+
+# 13. New Gate G0.7 — Outcomes / Impact / Repometer
+
+```text
+WU-G07-001 Outcome object
+WU-G07-002 Attribution object/confidence
+WU-G07-003 Impact Graph
+WU-G07-004 selective revalidation
+WU-G07-005 forward-only repair
+WU-G07-006 Repometer evidence claim
+WU-G07-007 code-lineage survival
+WU-G07-008 current/historical coverage
+WU-G07-009 four-graph replay
+WU-G07-010 regression-after-CONFIRMED experiment
+WU-G07-011 superseded-code coverage experiment
+```
+
+Hard stop if later Outcomes require rewriting historical Decisions or if Repometer claims cannot bind a canonical tree/methodology.
+
+# 14. Gate G1 identity
+
+Now identity must cover actors inside a WorkUnit, not merely the WU author. Node/configuration identity remains later than core authority.
+
+# 15. Gate G2 GitHub
+
+GitHub projects:
+
+```text
+Task dependency state
+Work Frontier projection
+Verification summaries
+Outcome/repair/revalidation references
+```
+
+GitHub remains projection only.
+
+# 16. Gate G3 CLI/TUI
+
+Must expose:
+
+```text
+WORK
+VERIFY
+GRAPH (intent/provenance/evidence/impact)
+REPOMETER
+```
+
+Market/wallet remain optional later modules.
+
+# 17. Gate G4 REP
+
+REP experiments now consume richer evidence:
+
+```text
+independent Proofs
+verification diversity
+Outcomes
+Attribution confidence
+survival/freshness
+Repometer confidence
+```
+
+But REP MUST be tested against simple baselines and MUST NOT reward gate/test/commit counts directly.
+
+# 18. G5+ economics
+
+Economic sequence remains. Update only the evidence adapter to Economics v1.1.
+
+No blockchain before local economic semantics survive.
+
+# 19. Bootstrap skeptic review
+
+**Attack:** v2.2 makes Gate-0 too large to falsify quickly.  
+**Resolution:** split G0.5/G0.6/G0.7. Core replay/authority remains first; advanced verification is earned progressively.
+
+**Attack:** changing WorkUnit schema invalidates bootstrap history.  
+**Resolution:** one-commit legacy WUs map to v2.2 sequence length 1. No history rewrite.
+
+**Attack:** verifier factory is built before independent verification is proven useful.  
+**Resolution:** G0 seeded-bad-WU experiment remains before G0.6 expansion. If independent verification adds negligible value, stop before factory complexity.
+
+**Attack:** Repometer before REP could bias REP design.  
+**Resolution:** Repometer measures evidence coverage only; G4 separately tests predictive REP.
+
+**Attack:** production mirroring appears too early.  
+**Resolution:** G0.6 defines interface/safety and can use isolated simulation; real production shadowing is not required to pass bootstrap.
+
+**Attack:** dependency/verification features delay first usable binary.  
+**Resolution:** G0 remains minimal and executable; new gates are separately blocked.
+
+**Attack:** later economics gets built despite technical failure.  
+**Resolution:** G1+ blocked on explicit Go/Stop decisions.
+
+No remaining internal bootstrap sequencing contradiction identified. Residual risk is overbuilding; enforce gate boundaries.
+
+# 20. Updated Go/Stop ladder
+
+```text
+G0 PASS:
+replay exact; rejected work isolated; verifier catches seeded defect; composition safe
+
+G0.5 PASS:
+DAG/readiness/frontier replay exactly; claims deterministic
+
+G0.6 PASS:
+verification plans cannot be self-downgraded; verifier cannot mutate candidate; wiring/test-integrity attacks detected in target experiments
+
+G0.7 PASS:
+regression appends Outcome; impact selective; forward repair works; Repometer current coverage follows lineage
+
+THEN G1...
+```
+
+# 21. Final bootstrap instruction
+
+> Execute only the current Work Unit/Gate. Treat every Gate as a falsifiable experiment. Do not implement future gates to rescue a failed lower-layer hypothesis. Preserve rejected candidates and failed experiments as evidence. One bounded logical change, independent verification, evidence, then stop for authority decision.
+
+
+---
+
+
+# VWL v2.3 — Incident Ripple, Roll-Forward, Evidence Restoration & SLA Protocol Addendum
+
+**Status:** Authoritative; supersedes VWL v2.2 incident/revalidation semantics. All unaffected v2.2 rules remain normative.
+
+## 1. Core change
+
+A regression propagates **uncertainty**, not retroactive rejection.
+
+```text
+CONFIRMED W1
+→ later Outcome(REGRESSION)
+→ Attribution
+→ Impact Frontier
+→ contain/restore service
+→ repair root
+→ revalidate immediate affected frontier
+→ stop below any node requiring code repair
+→ repair that node
+→ recompute frontier
+→ continue in waves
+```
+
+Git ancestry alone is not semantic dependency.
+
+## 2. Incident states
+
+```text
+CLEAN
+SUSPECT
+REVALIDATE_REQUIRED
+REPAIR_REQUIRED
+WAITING_ON_REPAIR
+INVALIDATED
+REVALIDATED
+```
+
+Historical `CONFIRMED` remains historical truth.
+
+## 3. Two restoration clocks
+
+VWL MUST distinguish:
+
+- **Service Restoration Time (SRT):** detection → service returned to acceptable SLO, possibly via rollback/traffic isolation/feature disable/safe roll-forward.
+- **Evidence Restoration Time (ERT):** detection → affected evidence cone is repaired/revalidated and canonical confidence restored.
+
+Restoring service does not falsely mark stale evidence valid.
+
+## 4. Containment
+
+On regression detection:
+
+1. append Outcome;
+2. preserve historical Decision;
+3. assess severity;
+4. identify candidate attribution;
+5. derive conservative initial impact frontier;
+6. contain service using configured policy:
+   - traffic isolation;
+   - feature disable;
+   - rollback to previously known-safe deployable artifact;
+   - or forward hotfix;
+7. block new authority through affected uncertain paths.
+
+Rollback is an operational containment action, not Git-history rewriting.
+
+## 5. Wave/barrier algorithm
+
+For an attributed root W1:
+
+```text
+repair W1
+→ verify/canonicalize repair
+→ derive immediate affected frontier F1
+→ validate F1 in parallel
+
+for each member:
+  PASS       → REVALIDATED; stop that branch unless deeper independent stale Proof exists
+  UNAFFECTED → stop branch
+  UNKNOWN    → conservative policy / broader evidence
+  FAIL but no code change → rerun/escalate required evidence
+  CODE CHANGE REQUIRED → REPAIR_REQUIRED; BARRIER below that node
+```
+
+When W2 is `REPAIR_REQUIRED`, descendants behind W2 become `WAITING_ON_REPAIR`. Do not perform authoritative deep validation against a state already known to be changing.
+
+After Repair-W2 becomes canonical:
+
+```text
+recompute impact frontier below W2
+→ validate next wave
+```
+
+Cheap static impact planning MAY run behind the barrier while repair is in progress.
+
+## 6. Proof invalidation
+
+Proofs SHOULD declare relevant premises:
+
+```yaml
+proof:
+  subject: W2
+  premises:
+    spec: S7
+    interface: API-X
+    environment: ENV4
+    canonical_effects: [W1]
+```
+
+If Repair-W1 changes API-X, dependent Proofs become `STALE`; unrelated Proofs may remain reusable.
+
+RevalidationPlan reruns only evidence whose premises changed plus mandatory policy gates.
+
+## 7. Rollback versus roll-forward
+
+Default preference:
+- restore user-facing service by the safest fastest configured containment;
+- preserve append-only Git/VWL authority history;
+- produce forward Repair WorkUnits for permanent canonical correction.
+
+A deployment rollback may point runtime traffic at an earlier artifact while canonical engineering history remains append-only.
+
+## 8. Node REP effect
+
+Ripple membership alone MUST NOT reduce Node REP.
+
+```text
+descendant becomes SUSPECT/STALE
+≠ negative REP
+```
+
+REP consequence requires the Node's own attributable work to receive sufficient negative evidence or fail revalidation under the REP specification.
+
+A high-REP Node may lose REP after a serious attributable regression, but penalty MUST be:
+- attribution-confidence weighted;
+- severity/domain weighted;
+- bounded against evidence volume/history;
+- capable of later recovery;
+- separate from temporary confidence/staleness.
+
+One incident MUST NOT erase years of evidence merely because the Node has high REP.
+
+## 9. Validator and Skill attribution
+
+Incident review records which gates had jurisdiction before confirmation:
+
+```text
+required gate?
+executed?
+PASS/FAIL/INCONCLUSIVE?
+validator identity/config epoch?
+Skill/config commitment?
+could the gate reasonably have detected this failure class?
+```
+
+A validator is not penalized merely because a later bug exists. Negative validator evidence requires a demonstrable miss inside its declared verification obligation.
+
+A Skill is not blamed merely because it was installed/used. Skill/config attribution requires evidence that it materially contributed to the failure or failed a declared obligation.
+
+## 10. SLA/SLO metrics
+
+A Node/project/service may publish SLO/SLA claims only with an explicit denominator/window.
+
+Example availability:
+
+```text
+availability = good service minutes / eligible service minutes
+```
+
+99.9% is a service metric, not a REP number.
+
+Track separately:
+- MTTD;
+- containment time;
+- Service Restoration Time;
+- root repair time;
+- Evidence Restoration Time;
+- impact-cone size;
+- revalidation fanout;
+- repair depth/waves;
+- stale-proof count;
+- revalidation pass rate;
+- validator escape rate;
+- recurrence rate;
+- attribution confidence;
+- customer-visible bad minutes.
+
+A Node's attributed incident history may inform REP, but SLA is not mechanically identical to REP.
+
+## 11. Deployment release gates
+
+Before deployment:
+```text
+canonical effect
+→ deployable artifact
+→ release VerificationPlan
+→ rollout policy
+```
+
+After deployment:
+```text
+canary/shadow
+→ telemetry
+→ SLO check
+→ widen rollout OR contain
+```
+
+Incident repair can use:
+```text
+rollback runtime
+OR safe roll-forward
+```
+while canonical repair/evidence restoration proceeds.
+
+## 12. Metrics attribution
+
+For each incident preserve:
+
+```yaml
+incident:
+  outcome: O-...
+  service: ...
+  detected_at: ...
+  severity: ...
+  root_attribution:
+    work_unit: ...
+    confidence: HIGH
+  affected_proofs: [...]
+  validators:
+    - gate: integration
+      obligation: ...
+      result_at_confirmation: pass
+      later_assessment: miss|not_applicable|unknown
+  skills:
+    - commitment: ...
+      assessment: contributed|not_applicable|unknown
+  srt: ...
+  ert: ...
+  repair_waves: ...
+```
+
+## 13. Adversarial review
+
+**Attack: Ripple invalidates the entire tree and incident recovery becomes slower than CI.**  
+Resolution: wave/barrier traversal, parallel frontier validation, premise-level Proof staleness, branch stop on PASS/UNAFFECTED.
+
+**Attack: Stopping below W2 hides W4 defects.**  
+Resolution: it delays authoritative validation only until Repair-W2 establishes the state W4 must actually be judged against; static impact planning may proceed meanwhile.
+
+**Attack: Roll-forward is slower than rollback during outage.**  
+Resolution: service containment and canonical repair are separate. Runtime rollback may restore service first.
+
+**Attack: Rollback rewrites canonical history.**  
+Resolution: runtime deployment pointer changes; Git/VWL history does not rewind.
+
+**Attack: A huge impact cone misses 99.9% SLA.**  
+Resolution: SLA measures service bad time, not evidence-restoration completion. Containment can restore service before ERT.
+
+**Attack: High-REP Node loses everything after one incident.**  
+Resolution: ripple staleness is not negative REP; only sufficiently attributed negative outcomes affect REP, bounded by history/severity/confidence.
+
+**Attack: High REP makes a Node immune to new failures.**  
+Resolution: historical evidence dampens volatility but cannot suppress current attributable negative evidence.
+
+**Attack: Validator is blamed for every escaped bug.**  
+Resolution: validator miss requires that failure class fell within the gate's declared obligation and was detectable under its visibility/environment.
+
+**Attack: Skill author is blamed because Skill was present.**  
+Resolution: usage correlation is not causal attribution.
+
+**Attack: Minimal revalidation reuses a Proof whose hidden premise changed.**  
+Resolution: premise declarations + conservative invalidation; unknown premise relationships trigger broader plan.
+
+**Attack: Repair waves oscillate forever.**  
+Resolution: bound automated repair depth/attempts in configuration; escalation occurs after policy threshold while preserving evidence.
+
+No further internal authority contradiction identified. Residual risk remains in attribution accuracy, dependency/Proof premise quality, deployment tooling, and real gate latency.
+
+## 14. One-year synthetic incident simulation
+
+Scenario only; not a forecast and no monetary/model cost assumptions.
+
+```text
+WorkUnits produced                         2487
+Services                                     12
+Nodes                                        18
+Incidents                                    30
+
+Median MTTD                              3.02 min
+P90 MTTD                                 6.45 min
+Median service restoration              12.65 min
+Median evidence restoration             18.78 min
+P90 evidence restoration                30.11 min
+
+Average impact cone                     9.37 WUs
+P90 impact cone                         18 WUs
+Descendant revalidations                281
+Descendant code repairs                 28
+Branches passing revalidation           246
+Unknown branches                        7
+
+Incidents without proven root blame     10
+Validator-miss incidents                3
+Skill/config investigation flags        4
+
+Median simulated service availability   99.99437%
+Worst simulated service availability    99.98164%
+```
+
+The scenario deliberately distinguishes stale evidence from negative Node REP. All 18 Nodes acquired some stale evidence during ripple analysis, while only 10 received attributable negative root evidence in this run.
+
+Interpretation: wave/barrier validation prevented automatic deep work behind nodes already requiring repair; service restoration preceded complete evidence restoration; no ripple membership alone created negative REP.
+
+## 15. New falsification tests
+
+1. Root regression with 50+ descendants must not force unconditional full-tree rebuild.
+2. W2 requires repair → W2 descendants wait until repair canonical, then frontier recomputed.
+3. Runtime rollback restores service without rewriting Git/VWL canonical history.
+4. Proof premise changed → Proof becomes STALE.
+5. Unrelated Proof premise unchanged → eligible for reuse.
+6. Descendant ripple membership alone → zero negative REP.
+7. High-confidence root regression → bounded REP consequence under REP policy.
+8. Validator outside failure-class obligation → no validator penalty.
+9. Validator obligated/detectable miss → negative verifier evidence.
+10. 99.9% availability calculation uses explicit service/window denominator.
+11. SRT and ERT are independently measured.
+12. Fresh replay reconstructs incident waves, barriers, stale Proofs and restoration metrics.
+
+## 16. Final invariant
+
+> Incident handling is a forward-moving evidence repair process. VWL restores service as safely and quickly as possible, then restores confidence through parallel impact-frontier waves. A branch requiring code repair becomes a barrier; deeper authoritative revalidation waits for that repair. Ripple membership creates uncertainty, not blame. REP, validator quality, Skill quality and SLA consequences require their own attributable evidence.
+
+
+---
+
+
+# VWL v2.3 — Protocol CLI / GitHub Incident & Release UX
+
+**Dependency:** VWL Protocol v2.3
+
+## Incident commands
+
+```text
+vwl incident show <outcome>
+vwl incident contain <outcome> --strategy rollback|roll-forward|isolate
+vwl impact <outcome>
+vwl impact frontier <outcome>
+vwl proof stale --because <repair>
+vwl revalidate frontier <outcome>
+vwl repair start <work-unit>
+vwl incident metrics <outcome>
+```
+
+## TUI incident view
+
+```text
+INCIDENT O-551
+Severity: HIGH
+Service: payments
+Root attribution: W1 HIGH
+
+SERVICE
+SRT: 12m
+SLO: restored
+
+EVIDENCE
+ERT: running
+Impact: 17 WUs
+REVALIDATED  9
+REPAIR       1
+WAITING      5
+UNKNOWN      2
+
+BARRIER
+W2 requires repair
+W4/W5/W7 waiting behind W2
+```
+
+## GitHub projection
+
+Create/reference:
+- Outcome Issue;
+- root Repair Task;
+- immediate Revalidation Tasks;
+- barrier/waiting relationships;
+- later descendant tasks only when their frontier opens.
+
+Do not spam GitHub by materializing every possible descendant before it becomes actionable.
+
+Labels are projections:
+```text
+vwl:incident
+vwl:suspect
+vwl:revalidate
+vwl:repair-required
+vwl:waiting-on-repair
+vwl:revalidated
+```
+
+Changing labels never changes authority.
+
+## Release/deployment UX
+
+```text
+vwl release status
+vwl deploy verify
+vwl deploy canary
+vwl deploy shadow
+vwl deploy rollback
+vwl deploy roll-forward
+```
+
+CLI must distinguish:
+```text
+runtime deployment pointer
+canonical engineering state
+```
+
+A rollback may restore runtime service while canonical history remains append-only.
+
+## REP/validator/Skill incident UX
+
+```text
+vwl incident attribution O-551
+vwl node evidence N1 --incident O-551
+vwl validator evidence V1 --incident O-551
+vwl skill evidence <commitment> --incident O-551
+```
+
+UI must never display ripple membership as blame.
+
+Show:
+```text
+STALE EVIDENCE
+NEGATIVE ATTRIBUTION
+VALIDATOR MISS
+SKILL CONTRIBUTION
+```
+as distinct concepts.
+
+## SLA metrics
+
+```text
+vwl sla service <service> --window 30d
+vwl incident metrics O-551
+```
+
+Show MTTD, containment, SRT, ERT, impact size, repair waves, bad minutes and explicit SLO denominator.
+
+## Skeptic checks
+
+- GitHub Issues cannot become incident authority.
+- Rollback cannot rewrite ledger history.
+- Waiting descendants cannot be manually relabeled into authority.
+- High REP cannot hide incident evidence.
+- Ripple membership cannot be rendered as negative REP.
+- Validator/Skill blame requires explicit attributable evidence.
+- GitHub issue volume is bounded by actionable frontier, avoiding incident spam.
+
+No further CLI contradiction identified.
+
+
+---
+
+
+# VWL Economics & REP Incident Alignment v1.2
+## Aligned to VWL Protocol v2.3
+
+**Supersedes:** Economics & Settlement v1.1 incident/REP semantics. Unaffected WORK wage/reservation/vesting rules remain unchanged.
+
+## 1. What does NOT change
+
+```text
+REP is non-transferable/non-purchasable
+REP is not bid/spent
+WORK remains negotiated wage/economic entitlement
+Engagement defines earning/vesting
+technical truth flows one-way into economics
+```
+
+## 2. Regression does not equal automatic REP loss
+
+Three distinct events:
+
+```text
+RIPPLE/STALE
+Node's work may be affected
+→ confidence temporarily stale
+→ NO automatic negative REP
+
+REVALIDATION FAIL
+Node's own effect fails in repaired canonical context
+→ negative evidence
+→ REP engine may update according to versioned policy
+
+ATTRIBUTED REGRESSION
+Node's own WorkUnit receives sufficient causal attribution
+→ negative outcome evidence
+→ REP may decrease
+```
+
+A high-REP Node is neither immune nor catastrophically reset.
+
+REP policy SHOULD weight:
+```text
+attribution confidence
+severity
+domain relevance
+recency
+evidence volume
+prior survival
+repair quality/time
+recurrence
+```
+
+REP changes MUST be versioned/recomputable and explainable to underlying Outcomes.
+
+## 3. Ripple and descendant Nodes
+
+If W1 regresses and W2/W3 merely depended on W1:
+
+```text
+W2/W3 → STALE/REVALIDATE
+```
+
+This alone does not lower their REP.
+
+If W2 revalidation passes, evidence freshness is restored.
+
+If W2 fails and requires repair, W2's Node receives its own negative evidence according to attribution/revalidation policy.
+
+## 4. Validator REP
+
+A later escaped defect asks:
+
+```text
+Which gate should have detected this class?
+Was that gate required?
+Did it run?
+What visibility/environment did it have?
+Was the defect detectable then?
+```
+
+Only a supported miss becomes negative verifier evidence.
+
+Valid unique catches, reproducible Challenges and low false-challenge rates may strengthen verifier REP.
+
+PASS/FAIL count alone never determines verifier REP.
+
+## 5. Skill/config evidence
+
+Skill/config commitment may be recorded for a WU.
+
+Incident outcomes may classify:
+```text
+CONTRIBUTED
+NOT_APPLICABLE
+UNKNOWN
+```
+
+Usage alone does not create blame.
+
+Private Skill contents need not be disclosed to record configuration epoch/commitment.
+
+## 6. SLA/SLO
+
+99.9% is not REP.
+
+SLA/SLO metrics require:
+```text
+service
+window
+eligible minutes/requests
+good/bad definition
+exclusions
+```
+
+An attributed Node incident may contribute to reliability-domain REP, but service availability and Node reputation remain separate metrics.
+
+## 7. WORK/vesting
+
+No new automatic clawback is introduced by v2.3.
+
+Already-final compensation remains final unless signed Engagement explicitly defines otherwise.
+
+Outcome-sensitive unvested tail may react only under signed terms and sufficient attribution.
+
+Ripple descendants receive no wage/vesting penalty merely for being revalidated.
+
+## 8. Incident metrics for REP/economics
+
+Track:
+```text
+incidents attributable to Node
+severity
+customer-visible bad time
+repair time
+recurrence
+revalidation failure/pass
+validator misses
+false Challenges
+Skill/config contribution confidence
+```
+
+Do not optimize REP around raw incident count without exposure/denominator.
+
+## 9. Adversarial review
+
+**Attack:** Big-REP Node gets destroyed by one regression.  
+Resolution: bounded evidence update weighted against history/exposure; no ripple penalty.
+
+**Attack:** Big-REP Node never loses meaningful REP.  
+Resolution: current high-confidence severe evidence still affects relevant domain REP; history dampens volatility, not truth.
+
+**Attack:** Descendant Nodes lose REP because parent failed.  
+Resolution: staleness is not negative evidence; own failure/attribution required.
+
+**Attack:** Node improves REP by rapidly repairing its own bugs.  
+Resolution: repair quality/time may mitigate but cannot erase originating negative Outcome.
+
+**Attack:** Validators avoid hard gates to protect REP.  
+Resolution: obligation completion and misses are measured relative to assigned gate; declining/avoiding obligations is separately visible.
+
+**Attack:** 99.9 SLA becomes marketing fiction.  
+Resolution: explicit denominator/window and service telemetry required; REP cannot manufacture SLA.
+
+**Attack:** Project weaponizes outcome-sensitive vesting.  
+Resolution: signed predicate + attribution threshold + no descendant cascade.
+
+No further internal economic contradiction identified. REP formula itself remains a separate specification and must be empirically calibrated.
+
+
+---
+
+
+# VWL v2.3 — One-Year Incident Simulation Report
+
+**Synthetic stress scenario; not a forecast. No monetary/model-cost assumptions.**
+
+```text
+WorkUnits                              2487
+Services                                  12
+Nodes                                     18
+Incidents                                 30
+
+Median MTTD                           3.02 min
+P90 MTTD                              6.45 min
+Median service restoration           12.65 min
+Median evidence restoration          18.78 min
+P90 evidence restoration             30.11 min
+
+Average impact cone                  9.37 WUs
+P90 impact cone                      18 WUs
+Descendant revalidations             281
+Descendant code repairs              28
+Branches passing                     246
+Unknown branches                     7
+
+Incidents without proven root blame  10
+Validator-miss incidents             3
+Skill/config investigation flags     4
+
+Median service availability          99.99437%
+Worst service availability           99.98164%
+```
+
+## Interpretation
+
+The simulation used parallel impact-frontier validation and repair barriers. Service could be restored before all evidence was revalidated. Ripple membership only made evidence stale; it did not automatically lower REP. In this run all 18 Nodes encountered stale evidence somewhere in an impact cone, while only 10 Nodes received attributable root-negative evidence.
+
+The simulated availability values are consequences of the scenario assumptions and are not VWL performance promises. Real SLO claims require measured production telemetry and explicit denominators.
+
+## Metrics to validate in real pilots
+
+```text
+MTTD
+containment time
+SRT
+root repair time
+ERT
+impact-cone precision/recall
+revalidation pass rate
+repair-wave depth
+Proof reuse ratio
+stale-proof false negatives
+validator escape rate
+false attribution rate
+incident recurrence
+customer-visible bad minutes
+REP delta by attribution/severity
+```
+
+
+---
+
+
+# VWL Bootstrap Work Ledger v1.2 — v2.3 Incident Extension
+
+**Base:** Bootstrap Work Ledger v1.1 remains valid. Add the following after v2.2 Outcome/Impact work and before REP/economics gates.
+
+## G0.8 — Incident Ripple & Evidence Restoration
+
+### WU-G0.8-001 Incident state machine
+Implement CLEAN/SUSPECT/REVALIDATE_REQUIRED/REPAIR_REQUIRED/WAITING_ON_REPAIR/INVALIDATED/REVALIDATED.
+
+### WU-G0.8-002 Proof premise/staleness model
+Proofs declare relevant premises; changed premise derives STALE.
+
+### WU-G0.8-003 Impact frontier
+Compute immediate affected frontier rather than full descendant rebuild.
+
+### WU-G0.8-004 Repair barrier
+If W2 requires code repair, descendants behind W2 become WAITING_ON_REPAIR until Repair-W2 is canonical.
+
+### WU-G0.8-005 Parallel wave revalidation
+Validate independent members of the current impact frontier concurrently.
+
+### WU-G0.8-006 Branch stop
+PASS/UNAFFECTED branches stop traversal unless deeper independent stale evidence exists.
+
+### WU-G0.8-007 Runtime containment
+Represent rollback/isolate/roll-forward as operational events without rewriting canonical Git/VWL history.
+
+### WU-G0.8-008 SRT versus ERT
+Measure service restoration independently from complete evidence restoration.
+
+### WU-G0.8-009 Validator obligation analysis
+Determine whether an escaped defect was inside a validator gate's declared detectable obligation.
+
+### WU-G0.8-010 Node/Skill attribution separation
+Prove ripple staleness does not create negative REP evidence; Skill usage does not equal causation.
+
+### WU-G0.8-011 SLA metric contract
+Explicit service/window/denominator/good-bad definition.
+
+### WU-G0.8-012 Replay incident waves
+Fresh replay reconstructs containment, repair barriers, stale Proofs, frontier waves, SRT/ERT and final health.
+
+## Hard experiments
+
+1. 50-descendant regression; only minimum affected frontier runs.
+2. W2 repair barrier prevents premature W4/W5 authoritative validation.
+3. runtime rollback restores service while ledger remains append-only.
+4. high-REP Node ripple only → no negative REP evidence.
+5. direct high-confidence regression → negative Node evidence.
+6. validator outside obligation → no miss.
+7. validator inside obligation/detectable defect → miss evidence.
+8. Proof premise unchanged → reused; changed → stale.
+9. incident reaches healthy canonical state without destructive rebase.
+10. replay reproduces exact incident state.
+
+## Stop conditions
+
+Stop/redesign if:
+- ripple routinely degenerates into full-tree validation;
+- repair barriers deadlock descendants;
+- SRT cannot be separated from ERT;
+- rollback requires rewriting canonical history;
+- attribution causes descendant REP cascades;
+- Proof reuse accepts changed premises;
+- replay cannot reconstruct incident waves.

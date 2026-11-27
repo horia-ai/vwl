@@ -2,6 +2,7 @@ use crate::decision::Decision;
 use crate::error::{Result, VwlError};
 use crate::factory::{Challenge, VerificationPlan, VerifierArtifact};
 use crate::graph::{Claim, TaskDependency, TaskGraph};
+use crate::incident::IncidentRecord;
 use crate::proof::Proof;
 use crate::repometer::{Attribution, Outcome};
 use crate::task::Task;
@@ -27,6 +28,7 @@ impl LocalLedger {
         fs::create_dir_all(root_dir.join("challenges"))?;
         fs::create_dir_all(root_dir.join("outcomes"))?;
         fs::create_dir_all(root_dir.join("attributions"))?;
+        fs::create_dir_all(root_dir.join("incidents"))?;
 
         Ok(Self { root_dir })
     }
@@ -275,7 +277,7 @@ impl LocalLedger {
         Ok(proofs)
     }
 
-    pub fn get_proofs_for_subject(&self, subject: &str) -> Result<Vec<Proof>> {
+    pub fn get_proofs(&self) -> Result<Vec<Proof>> {
         let mut proofs = Vec::new();
         let proofs_dir = self.root_dir.join("proofs");
         if proofs_dir.exists() {
@@ -284,13 +286,16 @@ impl LocalLedger {
                 if entry.path().extension().is_some_and(|ext| ext == "yaml") {
                     let content = fs::read_to_string(entry.path())?;
                     let proof = Proof::from_yaml(&content)?;
-                    if proof.subject == subject {
-                        proofs.push(proof);
-                    }
+                    proofs.push(proof);
                 }
             }
         }
         Ok(proofs)
+    }
+
+    pub fn get_proofs_for_subject(&self, subject: &str) -> Result<Vec<Proof>> {
+        let all = self.get_proofs()?;
+        Ok(all.into_iter().filter(|p| p.subject == subject).collect())
     }
 
     pub fn append_verification_plan(&self, plan: &VerificationPlan) -> Result<()> {
@@ -445,5 +450,49 @@ impl LocalLedger {
         }
         attributions.sort_by(|a, b| a.outcome_id.cmp(&b.outcome_id));
         Ok(attributions)
+    }
+
+    pub fn append_incident(&self, incident: &IncidentRecord) -> Result<()> {
+        let safe_id = incident.outcome_id.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("incidents")
+            .join(format!("{}.yaml", safe_id));
+        let yaml = incident.to_yaml()?;
+        fs::write(file_path, yaml)?;
+        Ok(())
+    }
+
+    pub fn load_incident(&self, outcome_id: &str) -> Result<IncidentRecord> {
+        let safe_id = outcome_id.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("incidents")
+            .join(format!("{}.yaml", safe_id));
+        if !file_path.exists() {
+            return Err(VwlError::LedgerError(format!(
+                "Incident not found for outcome {}",
+                outcome_id
+            )));
+        }
+        let content = fs::read_to_string(file_path)?;
+        IncidentRecord::from_yaml(&content)
+    }
+
+    pub fn list_incidents(&self) -> Result<Vec<IncidentRecord>> {
+        let mut incidents = Vec::new();
+        let inc_dir = self.root_dir.join("incidents");
+        if inc_dir.exists() {
+            for entry in fs::read_dir(inc_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    let inc = IncidentRecord::from_yaml(&content)?;
+                    incidents.push(inc);
+                }
+            }
+        }
+        incidents.sort_by(|a, b| a.outcome_id.cmp(&b.outcome_id));
+        Ok(incidents)
     }
 }

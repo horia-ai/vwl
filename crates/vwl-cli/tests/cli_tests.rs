@@ -857,3 +857,129 @@ fn test_cli_repometer_and_outcome_workflow() {
     let outcome_impact_str = String::from_utf8_lossy(&outcome_impact_out.stdout);
     assert!(outcome_impact_str.contains("Impact Assessment for Outcome 'O-CLI-REGRESS-1'"));
 }
+
+#[test]
+fn test_cli_v23_incident_and_sla_commands() {
+    let temp = tempdir().unwrap();
+
+    // 1. Initialize git repo
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // 2. Test 'vwl sla service'
+    let sla_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["sla", "service", "payments", "--window", "30d"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(sla_out.status.success());
+    let sla_str = String::from_utf8_lossy(&sla_out.stdout);
+    assert!(sla_str.contains("SERVICE SLA / SLO: payments"));
+    assert!(sla_str.contains("Availability:"));
+    assert!(sla_str.contains("Window:                 30d"));
+
+    // 3. Record an outcome to attach incident to
+    let outcome_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "outcome",
+            "add",
+            "O-INC-CLI-1",
+            "cand_root_wu",
+            "--type",
+            "regression",
+            "--severity",
+            "high",
+            "--evidence",
+            "Latency spike over 2000ms",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(outcome_out.status.success());
+
+    // 4. Test 'vwl incident show'
+    let show_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["incident", "show", "O-INC-CLI-1"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(show_out.status.success());
+    let show_str = String::from_utf8_lossy(&show_out.stdout);
+    assert!(show_str.contains("INCIDENT O-INC-CLI-1"));
+    assert!(show_str.contains("Root WorkUnit:"));
+
+    // 5. Test 'vwl incident contain'
+    let contain_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "incident",
+            "contain",
+            "O-INC-CLI-1",
+            "--strategy",
+            "rollback",
+            "--target",
+            "release-v1.42.0",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(contain_out.status.success());
+    let contain_str = String::from_utf8_lossy(&contain_out.stdout);
+    assert!(contain_str.contains("Successfully contained incident 'O-INC-CLI-1'"));
+    assert!(contain_str.contains("Rollback"));
+    assert!(contain_str.contains("Service restored"));
+
+    // 6. Test 'vwl incident metrics'
+    let metrics_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["incident", "metrics", "O-INC-CLI-1"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(metrics_out.status.success());
+    let metrics_str = String::from_utf8_lossy(&metrics_out.stdout);
+    assert!(metrics_str.contains("INCIDENT METRICS O-INC-CLI-1"));
+    assert!(metrics_str.contains("SRT (Service):"));
+
+    // 7. Test 'vwl impact frontier'
+    let frontier_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["impact", "frontier", "O-INC-CLI-1"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(frontier_out.status.success());
+    let frontier_str = String::from_utf8_lossy(&frontier_out.stdout);
+    assert!(frontier_str.contains("Immediate Affected Frontier (F1) for Outcome 'O-INC-CLI-1'"));
+
+    // 8. Test 'vwl proof stale'
+    let proof_stale_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["proof", "stale", "--because", "cand_root_wu"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(proof_stale_out.status.success());
+    let proof_stale_str = String::from_utf8_lossy(&proof_stale_out.stdout);
+    assert!(proof_stale_str.contains("Stale Proofs because of repair 'cand_root_wu'"));
+
+    // 9. Test 'vwl revalidate frontier'
+    let revalidate_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["revalidate", "frontier", "O-INC-CLI-1"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(revalidate_out.status.success());
+    let reval_str = String::from_utf8_lossy(&revalidate_out.stdout);
+    assert!(reval_str.contains("Revalidating immediate affected frontier"));
+
+    // 10. Test 'vwl repair start'
+    let repair_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["repair", "start", "cand_root_wu"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(repair_out.status.success());
+    let repair_str = String::from_utf8_lossy(&repair_out.stdout);
+    assert!(repair_str.contains("Started repair task for WorkUnit 'cand_root_wu'"));
+    assert!(repair_str.contains("Erected repair barrier"));
+}
