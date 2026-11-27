@@ -110,6 +110,30 @@ To ensure rapid build times without incurring third-party cloud storage fees (AW
   - Identical crate compilation units are shared across jobs.
   - Release compilation drops from ~25s down to <5s on warm cache.
 
+### Local Development Build Caching
+
+You can use the exact same `sccache` engine locally on your development machine to accelerate every `cargo build`, `cargo test`, and `cargo clippy`:
+
+1. **Install `sccache` via Homebrew:**
+   ```bash
+   brew install sccache
+   ```
+
+2. **Configure your shell profile (`~/.zprofile` or `~/.zshrc`):**
+   ```bash
+   if command -v /opt/homebrew/bin/sccache >/dev/null 2>&1 || command -v sccache >/dev/null 2>&1; then
+     export RUSTC_WRAPPER="sccache"
+     export SCCACHE_DIR="$HOME/Library/Caches/Mozilla.sccache"
+     export SCCACHE_CACHE_SIZE="10G"
+   fi
+   ```
+
+3. **Verify cache utilization:**
+   ```bash
+   sccache --show-stats
+   ```
+   * Warm rebuild read hits execute in **~0.015s per crate** (sub-second incremental and clean rebuilds).
+
 ---
 
 ## 4. End-User Installation & NPX Execution (Option B: Enterprise Grade)
