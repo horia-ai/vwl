@@ -1,6 +1,6 @@
 {
   "repo_name": "horia-ai/vwl",
-  "canonical_head": "2f3049909334de5741fdeed8c3fe698d8459af05",
+  "canonical_head": "8c5a25d0d257c0c80492d55c1f2d888f721dcea2",
   "total_tasks": 2,
   "total_work_units": 2,
   "contributors": [
@@ -24,9 +24,9 @@
     "total_reserved_escrow": 25000,
     "unallocated_balance": 900000,
     "milestone_budgets": {
-      "Gate 5 — Local Economic State Machine": 200000,
       "Gate 0 — Minimum Falsifiable VWL": 100000,
       "Gate 1 — Node and Project Identity": 100000,
+      "Gate 5 — Local Economic State Machine": 200000,
       "Gate 7 — Testnet Contracts": 200000,
       "Gate 10 — DEX Liquidity": 400000
     }
