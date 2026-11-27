@@ -15,6 +15,10 @@ pub struct ReplayState {
     pub active_claims: Vec<String>,
     pub total_outcomes: usize,
     pub active_regressions: Vec<String>,
+    #[serde(default)]
+    pub total_incidents: usize,
+    #[serde(default)]
+    pub active_barriers: Vec<String>,
 }
 
 pub struct ReplayEngine;
@@ -68,6 +72,19 @@ impl ReplayEngine {
         }
         active_regressions.sort();
 
+        // Incidents & Barriers (v2.3)
+        let incidents = ledger.list_incidents().unwrap_or_default();
+        let mut active_barriers = Vec::new();
+        for inc in &incidents {
+            for b in &inc.barriers {
+                if !b.resolved {
+                    active_barriers.push(b.barrier_node.clone());
+                }
+            }
+        }
+        active_barriers.sort();
+        active_barriers.dedup();
+
         Ok(ReplayState {
             total_tasks: graph.tasks.len(),
             confirmed_work_units: confirmed_wus,
@@ -76,6 +93,8 @@ impl ReplayEngine {
             active_claims,
             total_outcomes: outcomes.len(),
             active_regressions,
+            total_incidents: incidents.len(),
+            active_barriers,
         })
     }
 }

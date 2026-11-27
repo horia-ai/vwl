@@ -40,6 +40,52 @@ pub struct ProofEvidence {
     pub output: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProofPremises {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub canonical_effects: Vec<String>,
+}
+
+impl ProofPremises {
+    pub fn new(
+        spec: Option<impl Into<String>>,
+        interface: Option<impl Into<String>>,
+        environment: Option<impl Into<String>>,
+        canonical_effects: Vec<String>,
+    ) -> Self {
+        Self {
+            spec: spec.map(Into::into),
+            interface: interface.map(Into::into),
+            environment: environment.map(Into::into),
+            canonical_effects,
+        }
+    }
+
+    pub fn is_stale_against(
+        &self,
+        changed_interface: Option<&str>,
+        changed_effects: &[String],
+    ) -> bool {
+        if let (Some(ref my_iface), Some(changed_iface)) = (&self.interface, changed_interface) {
+            if my_iface == changed_iface {
+                return true;
+            }
+        }
+        for effect in &self.canonical_effects {
+            if changed_effects.contains(effect) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Proof {
     pub subject: String,
@@ -54,6 +100,8 @@ pub struct Proof {
     pub visibility: Option<VisibilityProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub premises: Option<ProofPremises>,
 }
 
 impl Proof {
@@ -112,7 +160,25 @@ impl Proof {
             plane,
             visibility,
             environment,
+            premises: None,
         })
+    }
+
+    pub fn with_premises(mut self, premises: ProofPremises) -> Self {
+        self.premises = Some(premises);
+        self
+    }
+
+    pub fn is_stale_against(
+        &self,
+        changed_interface: Option<&str>,
+        changed_effects: &[String],
+    ) -> bool {
+        if let Some(ref p) = self.premises {
+            p.is_stale_against(changed_interface, changed_effects)
+        } else {
+            false
+        }
     }
 
     pub fn compute_digest(&self) -> String {

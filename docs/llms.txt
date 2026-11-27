@@ -7,6 +7,11 @@
 - [Protocol CLI & GitHub Projection](docs/wiki-llm/02-protocol-cli-and-github-projection.md): Authoritative CLI/TUI contracts, Work Frontier synchronization, and GitHub WorkHost projection.
 - [Economics & Settlement v1.1](docs/wiki-llm/03-economics-and-settlement.md): Authoritative economic design, REP scoring, WORK token wages, escrow engagements, vesting schedules, Solidity smart contract equivalence, and DEX pool.
 - [Bootstrap Work Ledger](docs/wiki-llm/04-bootstrap-work-ledger.md): Falsification discipline and gate delivery ledger (G0 through G10).
+- [Incident Ripple & SLA Protocol v2.3](docs/wiki-llm/05-incident-ripple-and-sla-protocol-v2.3.md): Incident state machine, Proof premises, impact frontier, repair barriers, wave revalidation, runtime containment, SRT/ERT clocks, validator obligations.
+- [Incident CLI & GitHub UX v2.3](docs/wiki-llm/06-incident-cli-and-github-ux-v2.3.md): CLI/TUI contracts for incident containment, stale proof detection, frontier revalidation, repair, and SLA tracking.
+- [Economics & REP Incident Alignment v1.2](docs/wiki-llm/07-economics-and-rep-incident-alignment-v1.2.md): REP consequences during incidents, decoupling ripple staleness from negative REP, validator miss criteria, and explicit SLA contracts.
+- [Incident Simulation Report v2.3](docs/wiki-llm/08-incident-simulation-report-v2.3.md): Synthetic stress testing across 2,487 WUs and 30 incidents validating wave revalidation and repair barriers.
+- [Bootstrap Work Ledger Incident Extension v1.2](docs/wiki-llm/09-bootstrap-work-ledger-incident-extension-v1.2.md): Gate 0.8 Work Units (WU-G0.8-001 through WU-G0.8-012) for incident ripple falsification.
 - [Wiki Index & System Invariants](docs/wiki-llm/README.md): Comprehensive LLM navigation guide, core invariants, and quick command reference.
 
 ## Protocol Invariants for Coding Agents
@@ -17,6 +22,10 @@
 - Forward-Only Repair: Regressions trigger new repair tasks and work units, advancing the canonical head.
 - Repometer Binding: Coverage claims must bind to canonical tree SHA, denominator LOC, and methodology.
 - Pure Functional Replay: State reconstructed from Git + ledger must match bit-for-bit without external database dependencies.
+- Incident Ripple Uncertainty: Regressions propagate uncertainty (SUSPECT/STALE), not retroactive rejection. Ripple membership alone never lowers Node REP.
+- Two Restoration Clocks: Service Restoration Time (SRT) measures user-facing SLO containment; Evidence Restoration Time (ERT) measures full revalidation.
+- Repair Barriers: Descendants behind a node requiring code repair wait in WAITING_ON_REPAIR state until upstream repair is canonical.
+- Validator Obligation Boundary: Negative validator evidence requires demonstrable miss within declared verification obligation.
 
 ## Key CLI Commands
 - `vwl replay`: Deterministically reconstruct authoritative state from Git + Ledger across all four graphs.
@@ -24,4 +33,11 @@
 - `vwl verify run <work-unit>`: Derive and execute Verification Factory gates against candidate work units.
 - `vwl repometer --explain`: Calculate 8-dimension evidence and code-lineage coverage bound to canonical tree.
 - `vwl outcome list`: Inspect post-confirmation outcomes and regression evidence.
+- `vwl incident show <outcome>`: View incident status, SRT/ERT clocks, impact frontier, and barriers.
+- `vwl incident contain <outcome> --strategy <strategy>`: Apply operational containment (rollback/isolate/roll-forward).
+- `vwl impact frontier <outcome>`: Compute immediate affected frontier (F1) for wave revalidation.
+- `vwl proof stale --because <repair>`: Identify stale proofs whose declared premises changed.
+- `vwl revalidate frontier <outcome>`: Execute concurrent revalidation against immediate affected frontier.
+- `vwl repair start <work-unit>`: Launch forward repair task and erect descendant repair barriers.
+- `vwl sla service <service>`: Inspect service SLO availability with explicit denominator window.
 - `vwl report --gh-pages --json`: Generate contributor effectiveness and cost allocation report.

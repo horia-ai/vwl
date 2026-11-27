@@ -7,6 +7,7 @@ pub mod git;
 pub mod github;
 pub mod graph;
 pub mod identity;
+pub mod incident;
 pub mod ledger;
 pub mod market;
 pub mod proof;
@@ -37,9 +38,16 @@ pub use graph::{Claim, DependencyKind, TaskDependency, TaskGraph};
 pub use identity::{
     verify_signature, NodeCredential, NodeKeypair, ProjectCredential, SignedObject,
 };
+pub use incident::{
+    evaluate_node_rep_impact, ContainmentEvent, ContainmentStrategy, IncidentFrontierEngine,
+    IncidentRecord, IncidentState, ObligationAssessment, RepairBarrier, RestorationClocks,
+    SkillContribution, SlaMetric, ValidatorObligation, WaveProcessingOutcome,
+};
 pub use ledger::LocalLedger;
 pub use market::{Offer, ProjectManifest, Role};
-pub use proof::{Proof, ProofEvidence, ProofType, Verdict, VerificationPlane, VisibilityProfile};
+pub use proof::{
+    Proof, ProofEvidence, ProofPremises, ProofType, Verdict, VerificationPlane, VisibilityProfile,
+};
 pub use replay::{ReplayEngine, ReplayState};
 pub use repometer::{
     Attribution, AttributionConfidence, ImpactAssessment, ImpactGraph, ImpactState, Outcome,

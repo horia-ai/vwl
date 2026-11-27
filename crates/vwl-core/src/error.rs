@@ -29,6 +29,9 @@ pub enum VwlError {
     #[error("Verification failed: {0}")]
     VerificationFailed(String),
 
+    #[error("Incident error: {0}")]
+    IncidentError(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
