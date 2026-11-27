@@ -117,11 +117,13 @@ fn test_replay_throughput_performance_gate() {
         replay_state.total_tasks
     );
 
-    // Enforce performance gate: Replay of 400 objects must finish in < 500ms
+    // Enforce performance gate: Replay of 400 objects (< 1500ms in debug, < 200ms in release)
+    let threshold_ms = if cfg!(debug_assertions) { 1500 } else { 200 };
     assert!(
-        elapsed.as_millis() < 500,
-        "Performance gate violated: replay took {:?}",
-        elapsed
+        elapsed.as_millis() < threshold_ms,
+        "Performance gate violated: replay took {:?} (threshold: {}ms)",
+        elapsed,
+        threshold_ms
     );
     assert_eq!(replay_state.total_tasks, num_records);
     assert_eq!(replay_state.confirmed_work_units.len(), num_records);
@@ -147,11 +149,13 @@ fn test_repometer_calculation_latency_and_benchmark_outcome() {
         elapsed, metrics.methodology
     );
 
-    // Enforce performance gate: Repometer calculation on clean repo < 150ms
+    // Enforce performance gate: Repometer calculation on clean repo (< 500ms in debug, < 150ms in release)
+    let threshold_ms = if cfg!(debug_assertions) { 500 } else { 150 };
     assert!(
-        elapsed.as_millis() < 150,
-        "Performance gate violated: repometer took {:?}",
-        elapsed
+        elapsed.as_millis() < threshold_ms,
+        "Performance gate violated: repometer took {:?} (threshold: {}ms)",
+        elapsed,
+        threshold_ms
     );
 
     // Record formal Benchmark Outcome

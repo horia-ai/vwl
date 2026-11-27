@@ -7,13 +7,22 @@
     "vwl": "./bin/vwl.js"
   },
   "main": "./bin/vwl.js",
+  "files": [
+    "bin/",
+    "README.md"
+  ],
   "scripts": {
     "test": "vitest run",
     "start": "node ./bin/vwl.js"
   },
   "publishConfig": {
     "access": "public",
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/horia-ai/vwl.git",
+    "directory": "packages/vwl"
   },
   "keywords": [
     "vwl",
