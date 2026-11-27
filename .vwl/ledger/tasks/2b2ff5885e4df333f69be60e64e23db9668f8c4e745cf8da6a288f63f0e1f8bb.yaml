@@ -1,0 +1,8 @@
+id: TASK-DOGFOOD-002
+objective: Verify Gate 0.5 Work Graph, Work Frontier derivation, and v2.2 commit sequence WorkUnit authority
+acceptance:
+- TaskGraph correctly resolves upstream dependencies and detects DAG cycles
+- Work Frontier deterministically identifies READY tasks without relying on external chat or cache
+- v2.2 WorkUnits capture multi-commit sequences and dependency snapshots
+- Zero-divergence functional replay reconstructs authoritative state
+base: 2f3049909334de5741fdeed8c3fe698d8459af05

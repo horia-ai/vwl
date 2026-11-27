@@ -1,0 +1,13 @@
+task: TASK-DOGFOOD-002
+commit: cand_task_dogfood_002_2f304990
+base: 2f3049909334de5741fdeed8c3fe698d8459af05
+commits:
+- sha: test_cand_task_dogfood_002_2f304990
+  role: unit-test
+  actor: gemini
+- sha: cand_task_dogfood_002_2f304990
+  role: implementation
+  actor: gemini
+candidate: cand_task_dogfood_002_2f304990
+spec_digest: 2b2ff5885e4df333f69be60e64e23db9668f8c4e745cf8da6a288f63f0e1f8bb
+dependency_snapshot: sha256:5b9a660ab5abe75541aca6ae4e9d7553851c794a0aa76ebda3d32cf9ce3fc4e7

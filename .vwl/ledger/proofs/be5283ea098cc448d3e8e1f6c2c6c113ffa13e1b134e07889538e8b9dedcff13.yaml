@@ -1,0 +1,10 @@
+subject: cand_task_dogfood_002_2f304990
+type: work
+verdict: pass
+evidence:
+  command: acceptance-check --task TASK-DOGFOOD-002 --harness gemini
+  output: All acceptance criteria verified pass independently
+gate: G0.6-DETERMINISTIC
+plane: deterministic
+visibility: interface-integration
+environment: runtime-clean

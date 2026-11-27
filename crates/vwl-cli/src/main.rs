@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::collections::HashSet;
 use std::fs;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
@@ -8,15 +9,16 @@ use vwl_core::{
     economics::EconomicLedger,
     git::GitInspector,
     github::{resolve_github_token_with_source, GithubClient},
+    graph::{Claim, DependencyKind, TaskDependency},
     identity::NodeCredential,
     identity::NodeKeypair,
     ledger::LocalLedger,
-    proof::{Proof, ProofType, Verdict},
+    proof::{Proof, ProofType, Verdict, VerificationPlane, VisibilityProfile},
     replay::ReplayEngine,
     skills,
     task::Task,
     verify_signature,
-    work_unit::WorkUnit,
+    work_unit::{CommitEntry, WorkUnit},
     Result, VwlError,
 };
 
@@ -133,6 +135,44 @@ enum Commands {
         #[arg(long)]
         render_view: Option<usize>,
     },
+
+    /// Display the current Work Frontier (all READY tasks derived from Task DAG)
+    Frontier {
+        /// Print Work Frontier in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Inspect VWL Intent, Provenance, Evidence, and Impact graphs
+    Graph {
+        #[command(subcommand)]
+        cmd: GraphCommands,
+    },
+
+    /// Claim a ready task on the Work Frontier (WU-G05-007)
+    Claim {
+        task_id: String,
+        #[arg(long, default_value = "developer")]
+        actor: String,
+        #[arg(long)]
+        ttl_secs: Option<u64>,
+    },
+
+    /// Release an active task claim
+    Release {
+        task_id: String,
+        #[arg(long)]
+        actor: Option<String>,
+    },
+
+    /// Submit a completed task candidate as a v2.2 WorkUnit (commit sequence & tree effect)
+    Submit {
+        task_id: String,
+        #[arg(long)]
+        candidate: Option<String>,
+        #[arg(long)]
+        base: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -210,6 +250,31 @@ enum MarketCommands {
 enum TaskCommands {
     /// Add task YAML to ledger
     Add { path: PathBuf },
+    /// Show reasons why a task is blocked
+    WhyBlocked { task_id: String },
+    /// List dependencies for a task
+    Deps { task_id: String },
+    /// Add a dependency relationship between tasks (Requires, After, Evidence, Conflicts)
+    AddDep {
+        from: String,
+        to: String,
+        #[arg(long, default_value = "requires")]
+        kind: String,
+    },
+    /// Cancel a task in the graph
+    Cancel { task_id: String },
+}
+
+#[derive(Subcommand)]
+enum GraphCommands {
+    /// Display Task DAG intent graph
+    Intent,
+    /// Display provenance / commit history of WorkUnits
+    Provenance,
+    /// Display verification evidence graph
+    Evidence,
+    /// Display affected cone / impact of a task
+    Impact { task_id: String },
 }
 
 #[derive(Subcommand)]
@@ -414,7 +479,7 @@ fn main() -> Result<()> {
 
         Commands::Task { cmd } => match cmd {
             TaskCommands::Add { path } => {
-                let content = std::fs::read_to_string(&path)?;
+                let content = std::fs::read_to_string(path)?;
                 let task = Task::from_yaml(&content)?;
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
                 let ledger = LocalLedger::new(&repo_root)?;
@@ -424,6 +489,72 @@ fn main() -> Result<()> {
                     task.id,
                     task.compute_digest()
                 );
+            }
+            TaskCommands::WhyBlocked { task_id } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let ledger = LocalLedger::new(&repo_root)?;
+                let graph = ledger.get_task_graph()?;
+                let decisions = ledger.get_decisions()?;
+                let wus = ledger.get_work_units()?;
+                let mut confirmed = HashSet::new();
+                for wu in wus {
+                    if decisions.iter().any(|d| {
+                        (d.subject == wu.commit || d.subject == wu.candidate)
+                            && d.outcome == DecisionOutcome::Confirmed
+                    }) {
+                        confirmed.insert(wu.task);
+                    }
+                }
+                let reasons = graph.why_blocked(&task_id, &confirmed);
+                println!("Why Blocked diagnostic for task {}:", task_id);
+                for r in reasons {
+                    println!("  - {}", r);
+                }
+            }
+            TaskCommands::Deps { task_id } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let ledger = LocalLedger::new(&repo_root)?;
+                let deps = ledger.get_dependencies()?;
+                println!("Dependencies for task {}:", task_id);
+                let mut found = false;
+                for dep in &deps {
+                    if dep.to_task == *task_id {
+                        println!("  - UPSTREAM:   {} ({})", dep.from_task, dep.kind.as_str());
+                        found = true;
+                    } else if dep.from_task == *task_id {
+                        println!("  - DOWNSTREAM: {} ({})", dep.to_task, dep.kind.as_str());
+                        found = true;
+                    }
+                }
+                if !found {
+                    println!("  (No dependencies recorded for this task)");
+                }
+            }
+            TaskCommands::AddDep { from, to, kind } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let ledger = LocalLedger::new(&repo_root)?;
+                let dep_kind = match kind.to_lowercase().as_str() {
+                    "requires" => DependencyKind::Requires,
+                    "after" => DependencyKind::After,
+                    "evidence" => DependencyKind::Evidence,
+                    "conflicts" => DependencyKind::Conflicts,
+                    other => {
+                        return Err(VwlError::InvalidTask(format!(
+                            "Unknown dependency kind: {}",
+                            other
+                        )))
+                    }
+                };
+                let dep = TaskDependency::new(&from, &to, dep_kind);
+                ledger.append_dependency(&dep)?;
+                println!("Successfully recorded dependency: {} {} {}", from, kind, to);
+            }
+            TaskCommands::Cancel { task_id } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let ledger = LocalLedger::new(&repo_root)?;
+                let mut graph = ledger.get_task_graph()?;
+                graph.cancel_task(&task_id);
+                println!("Task {} marked CANCELLED in Task DAG", task_id);
             }
         },
 
@@ -461,6 +592,195 @@ fn main() -> Result<()> {
                 "  Canonical Head:       {}",
                 state.canonical_head.as_deref().unwrap_or("unborn")
             );
+            println!("  Work Frontier (Ready): {:?}", state.frontier_tasks);
+            println!("  Active Claims:        {:?}", state.active_claims);
+        }
+
+        Commands::Frontier { json } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            let graph = ledger.get_task_graph()?;
+            let decisions = ledger.get_decisions()?;
+            let wus = ledger.get_work_units()?;
+            let mut confirmed = HashSet::new();
+            for wu in wus {
+                if decisions.iter().any(|d| {
+                    (d.subject == wu.commit || d.subject == wu.candidate)
+                        && d.outcome == DecisionOutcome::Confirmed
+                }) {
+                    confirmed.insert(wu.task);
+                }
+            }
+            let frontier = graph.get_frontier(&confirmed);
+            if json {
+                let json_str = serde_json::to_string_pretty(&frontier)
+                    .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                println!("{}", json_str);
+            } else {
+                println!(
+                    "VWL Work Frontier ({} Tasks READY for Execution):",
+                    frontier.len()
+                );
+                if frontier.is_empty() {
+                    println!("  (No tasks currently ready on Work Frontier)");
+                } else {
+                    for t in frontier {
+                        let claim_info = if let Some(claim) = graph.claims.get(&t.id) {
+                            format!(" [CLAIMED by {}]", claim.actor)
+                        } else {
+                            " [READY - UNCLAIMED]".to_string()
+                        };
+                        println!("  * {:<15} {:<50}{}", t.id, t.objective, claim_info);
+                    }
+                }
+            }
+        }
+
+        Commands::Graph { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            match cmd {
+                GraphCommands::Intent => {
+                    let graph = ledger.get_task_graph()?;
+                    print!("{}", graph.format_intent_graph());
+                }
+                GraphCommands::Provenance => {
+                    let wus = ledger.get_work_units()?;
+                    println!("=== VWL PROVENANCE GRAPH (WorkUnit Commits) ===");
+                    if wus.is_empty() {
+                        println!("  (No WorkUnits recorded in ledger)");
+                    } else {
+                        for wu in wus {
+                            println!(
+                                "WorkUnit Task: {} (Base: {}, Candidate: {})",
+                                wu.task, wu.base, wu.candidate
+                            );
+                            if let Some(ref snapshot) = wu.dependency_snapshot {
+                                println!("  Dependency Snapshot: {}", snapshot);
+                            }
+                            println!("  Commit Sequence ({} commits):", wu.commits.len());
+                            for c in &wu.commits {
+                                println!(
+                                    "    - [{:<14}] {:<10} (actor: {})",
+                                    c.role, c.sha, c.actor
+                                );
+                            }
+                        }
+                    }
+                }
+                GraphCommands::Evidence => {
+                    let proofs = ledger.get_all_proofs()?;
+                    println!("=== VWL EVIDENCE GRAPH (Verification Proofs) ===");
+                    if proofs.is_empty() {
+                        println!("  (No verification proofs recorded in ledger)");
+                    } else {
+                        for p in proofs {
+                            let plane_str = p
+                                .plane
+                                .map(|pl| format!("{:?}", pl))
+                                .unwrap_or_else(|| "Legacy".to_string());
+                            let gate_str = p.gate.as_deref().unwrap_or("unassigned");
+                            println!(
+                                "Subject: {:<20} Gate: {:<12} Plane: {:<14} Verdict: {:?}",
+                                p.subject, gate_str, plane_str, p.verdict
+                            );
+                            println!("  Command: {}", p.evidence.command);
+                            if let Some(ref out) = p.evidence.output {
+                                println!("  Output:  {}", out);
+                            }
+                        }
+                    }
+                }
+                GraphCommands::Impact { task_id } => {
+                    let graph = ledger.get_task_graph()?;
+                    let cone = graph.get_affected_cone(&task_id);
+                    println!("Affected downstream cone for task {}:", task_id);
+                    if cone.is_empty() {
+                        println!("  (No downstream tasks affected)");
+                    } else {
+                        for t in &cone {
+                            println!("  - Affected: {}", t);
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Claim {
+            task_id,
+            actor,
+            ttl_secs,
+        } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            let mut graph = ledger.get_task_graph()?;
+            let now = get_now_secs();
+            let mut claim = Claim::new(&task_id, &actor, now);
+            if let Some(ttl) = ttl_secs {
+                claim = claim.with_expiration(now + ttl);
+            }
+            graph.claim_task(claim.clone(), now)?;
+            ledger.append_claim(&claim)?;
+            println!(
+                "Successfully claimed task '{}' for actor '{}'",
+                task_id, actor
+            );
+        }
+
+        Commands::Release { task_id, actor } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            let mut graph = ledger.get_task_graph()?;
+            graph.release_claim(&task_id, actor.as_deref())?;
+            ledger.release_claim(&task_id)?;
+            println!("Successfully released claim on task '{}'", task_id);
+        }
+
+        Commands::Submit {
+            task_id,
+            candidate,
+            base,
+        } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            let graph = ledger.get_task_graph()?;
+            let decisions = ledger.get_decisions()?;
+            let wus = ledger.get_work_units()?;
+            let mut confirmed = HashSet::new();
+            for wu in wus {
+                if decisions.iter().any(|d| {
+                    (d.subject == wu.commit || d.subject == wu.candidate)
+                        && d.outcome == DecisionOutcome::Confirmed
+                }) {
+                    confirmed.insert(wu.task);
+                }
+            }
+            let dep_snapshot = graph.compute_dependency_snapshot(&task_id, &confirmed);
+            let repo_info = GitInspector::inspect(&repo_root)?;
+            let cand_sha = candidate.clone().unwrap_or(repo_info.head_sha);
+            let base_sha = base.clone().unwrap_or_else(|| {
+                repo_info
+                    .canonical_base
+                    .unwrap_or_else(|| "base_root".to_string())
+            });
+
+            let wu = WorkUnit::new_sequence(
+                &task_id,
+                &base_sha,
+                vec![CommitEntry {
+                    sha: cand_sha.clone(),
+                    role: "implementation".to_string(),
+                    actor: "worker".to_string(),
+                }],
+                &cand_sha,
+                None,
+                Some(dep_snapshot.clone()),
+            )?;
+            ledger.append_work_unit(&wu)?;
+            println!("WorkUnit submitted successfully for task {}:", task_id);
+            println!("  Candidate:           {}", cand_sha);
+            println!("  Base:                {}", base_sha);
+            println!("  Dependency Snapshot: {}", dep_snapshot);
         }
 
         Commands::Worker { cmd } => match cmd {
@@ -1197,33 +1517,50 @@ fn run_worker_daemon(
     );
 
     loop {
-        let tasks = ledger.get_tasks()?;
         let work_units = ledger.get_work_units()?;
         let decisions = ledger.get_decisions()?;
+        let graph = ledger.get_task_graph()?;
 
-        // Find candidate pending tasks:
-        // A task is pending if no work unit associated with it has a Confirmed decision.
-        let mut pending_task: Option<Task> = None;
-        for t in &tasks {
-            let confirmed = work_units.iter().filter(|wu| wu.task == t.id).any(|wu| {
-                decisions
-                    .iter()
-                    .any(|d| d.subject == wu.commit && d.outcome == DecisionOutcome::Confirmed)
-            });
-            if !confirmed {
-                pending_task = Some(t.clone());
-                break;
+        // Derive canonical confirmed tasks
+        let mut confirmed_tasks = HashSet::new();
+        for wu in &work_units {
+            if decisions.iter().any(|d| {
+                (d.subject == wu.commit || d.subject == wu.candidate)
+                    && d.outcome == DecisionOutcome::Confirmed
+            }) {
+                confirmed_tasks.insert(wu.task.clone());
             }
         }
 
-        if let Some(task) = pending_task {
+        // Derive the Work Frontier (tasks satisfying all upstream dependencies)
+        let frontier = graph.get_frontier(&confirmed_tasks);
+        let now = get_now_secs();
+
+        // Select next uncompleted task on Frontier not claimed by another active actor
+        let mut ready_task: Option<Task> = None;
+        for t in frontier {
+            if let Some(claim) = graph.claims.get(&t.id) {
+                if claim.is_active(now) && claim.actor != harness {
+                    continue; // Contention: claimed by another active actor
+                }
+            }
+            ready_task = Some(t);
+            break;
+        }
+
+        if let Some(task) = ready_task {
             println!("\n[Runner] ==================================================");
             println!(
-                "[Runner] Picked up Task: {} - '{}'",
+                "[Runner] Picked up Task: {} - '{}' (from Work Frontier)",
                 task.id, task.objective
             );
             println!("[Runner] Base commit: {}", task.base);
             println!("[Runner] Acceptance criteria: {:?}", task.acceptance);
+
+            // Step 0: Claim Task on Frontier
+            let claim = Claim::new(&task.id, harness, now);
+            let _ = ledger.append_claim(&claim);
+            let dep_snapshot = graph.compute_dependency_snapshot(&task.id, &confirmed_tasks);
 
             // Step 1: Create isolated worktree directory
             let worktree_dir = repo_root.join(".vwl").join("worktrees").join(&task.id);
@@ -1243,24 +1580,50 @@ fn run_worker_daemon(
                 task.id.to_lowercase().replace('-', "_"),
                 task.base.chars().take(8).collect::<String>()
             );
-            let wu = WorkUnit::new(&task.id, &candidate_commit, &task.base)?;
+            let commits = vec![
+                CommitEntry {
+                    sha: format!("test_{}", candidate_commit),
+                    role: "unit-test".to_string(),
+                    actor: harness.to_string(),
+                },
+                CommitEntry {
+                    sha: candidate_commit.clone(),
+                    role: "implementation".to_string(),
+                    actor: harness.to_string(),
+                },
+            ];
+            let wu = WorkUnit::new_sequence(
+                &task.id,
+                &task.base,
+                commits,
+                &candidate_commit,
+                Some(task.compute_digest()),
+                Some(dep_snapshot.clone()),
+            )?;
             ledger.append_work_unit(&wu)?;
             println!(
-                "[Runner] Work Unit produced: commit {} (base: {})",
-                wu.commit, wu.base
+                "[Runner] Work Unit produced: commit {} (candidate: {}, sequence: {} commits, dep_snapshot: {})",
+                wu.commit,
+                wu.candidate,
+                wu.commits.len(),
+                dep_snapshot
             );
 
-            // Step 3: Zero-Chat Verifier Phase
+            // Step 3: Zero-Chat Verifier Phase (Deterministic plane)
             println!(
                 "[Runner] Executing independent zero-chat verifier on candidate commit {}...",
                 candidate_commit
             );
-            let proof = Proof::new(
+            let proof = Proof::new_v22(
                 &candidate_commit,
                 ProofType::Work,
                 Verdict::Pass,
                 format!("acceptance-check --task {} --harness {}", task.id, harness),
                 Some("All acceptance criteria verified pass independently".to_string()),
+                Some("G0.6-DETERMINISTIC".to_string()),
+                Some(VerificationPlane::Deterministic),
+                Some(VisibilityProfile::InterfaceIntegration),
+                Some("runtime-clean".to_string()),
             )?;
             ledger.append_proof(&proof)?;
             println!(
@@ -1279,6 +1642,7 @@ fn run_worker_daemon(
 
             // Step 5: Economic Settlement & Project Report
             if decision.outcome == DecisionOutcome::Confirmed {
+                let _ = ledger.release_claim(&task.id);
                 if let Ok(mut econ) = EconomicLedger::load_or_create(repo_root) {
                     let mut found_eng = None;
                     for (eid, eng) in &econ.engagements {

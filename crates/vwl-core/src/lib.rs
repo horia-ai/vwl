@@ -4,6 +4,7 @@ pub mod economics;
 pub mod error;
 pub mod git;
 pub mod github;
+pub mod graph;
 pub mod identity;
 pub mod ledger;
 pub mod market;
@@ -26,13 +27,14 @@ pub use git::{GitInspector, GitRepoInfo};
 pub use github::{
     resolve_github_token, GithubClient, GithubComment, GithubIssue, GithubSyncSummary, GithubUser,
 };
+pub use graph::{Claim, DependencyKind, TaskDependency, TaskGraph};
 pub use identity::{
     verify_signature, NodeCredential, NodeKeypair, ProjectCredential, SignedObject,
 };
 pub use ledger::LocalLedger;
 pub use market::{Offer, ProjectManifest, Role};
-pub use proof::{Proof, ProofEvidence, ProofType, Verdict};
+pub use proof::{Proof, ProofEvidence, ProofType, Verdict, VerificationPlane, VisibilityProfile};
 pub use replay::{ReplayEngine, ReplayState};
 pub use skills::{install_skill, list_skills, SkillDef, SKILLS};
 pub use task::Task;
-pub use work_unit::WorkUnit;
+pub use work_unit::{CommitEntry, WorkUnit};

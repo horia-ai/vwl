@@ -486,3 +486,166 @@ fn test_cli_wizard_summary_retro_banner() {
     assert!(stdout.contains("[5] 🔌 MCP Integrations"));
     assert!(stdout.contains("[6] 🖥️ Launch TUI"));
 }
+
+#[test]
+fn test_cli_frontier_dag_and_claims_workflow() {
+    let temp = tempfile::tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git init");
+    Command::new("git")
+        .args(["config", "user.email", "tester@vwl.network"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git config email");
+    Command::new("git")
+        .args(["config", "user.name", "VWL Tester"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git config name");
+    fs::write(temp.path().join("README.md"), "# Frontier Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git add");
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git commit");
+
+    let head_output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git rev-parse");
+    let head_sha = String::from_utf8_lossy(&head_output.stdout)
+        .trim()
+        .to_string();
+
+    // Ingest TASK-A and TASK-B
+    let task_a_yaml = format!(
+        r#"id: "TASK-A"
+objective: "Build core protocol component"
+acceptance: ["Component compiles"]
+base: "{}"
+"#,
+        head_sha
+    );
+    let path_a = temp.path().join("task_a.yaml");
+    fs::write(&path_a, task_a_yaml).unwrap();
+    let add_a = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "add", path_a.to_str().unwrap()])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(add_a.status.success());
+
+    let task_b_yaml = format!(
+        r#"id: "TASK-B"
+objective: "Build consumer CLI tool"
+acceptance: ["CLI responds to help"]
+base: "{}"
+"#,
+        head_sha
+    );
+    let path_b = temp.path().join("task_b.yaml");
+    fs::write(&path_b, task_b_yaml).unwrap();
+    let add_b = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "add", path_b.to_str().unwrap()])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(add_b.status.success());
+
+    // Record dependency TASK-B requires TASK-A
+    let dep_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "add-dep", "TASK-A", "TASK-B", "--kind", "requires"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(dep_out.status.success());
+
+    // Check why-blocked on TASK-B
+    let why_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "why-blocked", "TASK-B"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(why_out.status.success());
+    let why_str = String::from_utf8_lossy(&why_out.stdout);
+    assert!(why_str.contains("Requires unconfirmed task 'TASK-A'"));
+
+    // Check deps on TASK-B
+    let deps_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "deps", "TASK-B"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(deps_out.status.success());
+    let deps_str = String::from_utf8_lossy(&deps_out.stdout);
+    assert!(deps_str.contains("UPSTREAM:   TASK-A (requires)"));
+
+    // Check frontier: TASK-A must be on frontier, TASK-B must NOT
+    let frontier_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["frontier"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(frontier_out.status.success());
+    let front_str = String::from_utf8_lossy(&frontier_out.stdout);
+    assert!(front_str.contains("TASK-A"));
+    assert!(!front_str.contains("TASK-B"));
+    assert!(front_str.contains("[READY - UNCLAIMED]"));
+
+    // Claim TASK-A
+    let claim_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["claim", "TASK-A", "--actor", "gemini-agent"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(claim_out.status.success());
+
+    // Frontier reflects CLAIMED status
+    let frontier_claimed_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["frontier"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    let front_claimed_str = String::from_utf8_lossy(&frontier_claimed_out.stdout);
+    assert!(front_claimed_str.contains("[CLAIMED by gemini-agent]"));
+
+    // Intent graph
+    let graph_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["graph", "intent"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(graph_out.status.success());
+    let graph_str = String::from_utf8_lossy(&graph_out.stdout);
+    assert!(graph_str.contains("Task TASK-A"));
+    assert!(graph_str.contains("Task TASK-B"));
+    assert!(graph_str.contains("REQUIRES upstream TASK-A"));
+
+    // Submit WorkUnit for TASK-A
+    let submit_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["submit", "TASK-A"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(submit_out.status.success());
+    let submit_str = String::from_utf8_lossy(&submit_out.stdout);
+    assert!(submit_str.contains("WorkUnit submitted successfully for task TASK-A"));
+    assert!(submit_str.contains("Dependency Snapshot: sha256:"));
+
+    // Release claim
+    let release_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["release", "TASK-A"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(release_out.status.success());
+}
