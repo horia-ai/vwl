@@ -21,6 +21,9 @@ contract EngagementEscrow {
     mapping(bytes32 => uint256) public projectBalances; // projectId => available unallocated WORK
     mapping(bytes32 => uint256) public milestoneBudgets; // milestoneId => available milestone WORK
 
+    uint256 public totalDeposited;
+    uint256 public totalDisbursed;
+
     event Funded(bytes32 indexed projectId, uint256 amount);
     event MilestoneAllocated(bytes32 indexed projectId, bytes32 indexed milestoneId, uint256 amount);
     event EngagementReserved(bytes32 indexed engagementId, bytes32 indexed milestoneId, uint256 amount);
@@ -29,9 +32,11 @@ contract EngagementEscrow {
     error InsufficientBudget();
     error EngagementAlreadyExists();
     error EngagementNotActive();
+    error ConservationInvariantViolated();
 
     function fundProject(bytes32 projectId, uint256 amount) external {
         projectBalances[projectId] += amount;
+        totalDeposited += amount;
         emit Funded(projectId, amount);
     }
 
@@ -64,5 +69,32 @@ contract EngagementEscrow {
         });
 
         emit EngagementReserved(engagementId, milestoneId, amount);
+    }
+
+    function settleEngagement(bytes32 engagementId, uint256 nonce) external {
+        Engagement storage eng = engagements[engagementId];
+        if (!eng.active || eng.completed) revert EngagementNotActive();
+
+        uint256 amount = eng.reservedAmount;
+        eng.settledAmount = amount;
+        eng.reservedAmount = 0;
+        eng.completed = true;
+        totalDisbursed += amount;
+
+        emit Settled(engagementId, amount, nonce);
+    }
+
+    function checkConservation(
+        bytes32 projectId,
+        bytes32 milestoneId,
+        bytes32 engagementId
+    ) external view returns (bool) {
+        uint256 projectBal = projectBalances[projectId];
+        uint256 milestoneBal = milestoneBudgets[milestoneId];
+        Engagement memory eng = engagements[engagementId];
+
+        uint256 sum = projectBal + milestoneBal + eng.reservedAmount + eng.settledAmount;
+        if (sum != totalDeposited) revert ConservationInvariantViolated();
+        return true;
     }
 }

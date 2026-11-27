@@ -43,7 +43,6 @@ contract DEXPoolIntegrationTest {
     function testInitialPriceRatio() public view returns (bool) {
         // Price of 1 WORK in USDC = reserveUSDC / (reserveWORK / 1e18)
         // 100,000 * 1e6 / 100,000,000 = 1,000 USDC units = 0.001 USDC
-        uint256 workUnits = reserveWORK / 1e18;
         uint256 usdcPerWork = (reserveUSDC * 1e18) / reserveWORK; // scaled to 1e6
         require(usdcPerWork == 1_000, "Price must be exactly 0.001 USD (1000 micro-USDC)");
         return true;
