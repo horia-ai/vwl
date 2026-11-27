@@ -1313,3 +1313,122 @@ gates:
     assert!(reinst_out.status.success());
     assert!(temp.path().join(".git/hooks/pre-commit").exists());
 }
+
+#[test]
+fn test_cli_bootstrap_workflow() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Create an initial commit
+    let dummy_file = temp.path().join("README.md");
+    fs::write(&dummy_file, "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Execute vwl bootstrap
+    let boot_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["bootstrap", "--harness", "opencode", "--commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    assert!(boot_out.status.success());
+    let boot_str = String::from_utf8_lossy(&boot_out.stdout);
+    assert!(boot_str.contains("VWL REPOSITORY BOOTSTRAP INITIALIZER"));
+    assert!(boot_str.contains("[1/5] Discovered project language stack"));
+    assert!(boot_str.contains("[2/5] Validating static pre-commit validator gates"));
+    assert!(boot_str.contains("[3/5] Installing Git pre-commit hook"));
+    assert!(boot_str.contains("[4/5] Injecting agent skills for harness 'opencode'"));
+    assert!(boot_str.contains("[5/5] Checking node cryptographic identity"));
+    assert!(boot_str.contains("VWL REPOSITORY BOOTSTRAP COMPLETE"));
+
+    // Verify filesystem state
+    assert!(temp.path().join(".vwl/gates.yaml").exists());
+    assert!(temp.path().join(".vwl/project.yaml").exists());
+    assert!(temp.path().join(".vwl/identity/credential.yaml").exists());
+    assert!(temp.path().join(".git/hooks/pre-commit").exists());
+    assert!(temp.path().join(".opencode/skills/repo-bootstrap-initializer/SKILL.md").exists());
+    assert!(temp.path().join(".opencode/skills/validator-wiring/SKILL.md").exists());
+
+    // Verify git commit
+    let log_out = Command::new("git")
+        .args(["log", "-n", "1", "--oneline"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    let log_str = String::from_utf8_lossy(&log_out.stdout);
+    assert!(log_str.contains("chore(vwl): bootstrap VWL protocol gates"));
+}
+
+#[test]
+fn test_cli_harness_auto_bootstrap() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let dummy_file = temp.path().join("README.md");
+    fs::write(&dummy_file, "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // In an uninitialized repo, run vwl harness start --type opencode --dry-run
+    let harness_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["harness", "start", "--type", "opencode", "--dry-run"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    assert!(harness_out.status.success());
+    let harness_str = String::from_utf8_lossy(&harness_out.stdout);
+    assert!(harness_str.contains("[VWL Harness] Repository has VWL or is starting fresh"));
+    assert!(harness_str.contains("VWL REPOSITORY BOOTSTRAP COMPLETE"));
+    assert!(harness_str.contains("Preflighting agent harness: opencode"));
+    assert!(harness_str.contains("Harness Ready"));
+
+    // Verify that gates and hooks were generated
+    assert!(temp.path().join(".vwl/gates.yaml").exists());
+    assert!(temp.path().join(".git/hooks/pre-commit").exists());
+}
