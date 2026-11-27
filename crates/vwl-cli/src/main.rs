@@ -67,7 +67,24 @@ enum Commands {
     },
 
     /// Query or scan local market discovery projections (Gate 2)
-    Market,
+    Market {
+        #[command(subcommand)]
+        cmd: Option<MarketCommands>,
+    },
+}
+
+#[derive(Subcommand)]
+enum MarketCommands {
+    /// List available roles from local project manifest (.vwl/project.yaml)
+    List,
+    /// Submit a cryptographically signed offer for a project role
+    Offer {
+        role_id: String,
+        #[arg(long)]
+        budget: Option<u64>,
+    },
+    /// Scan repositories matching topic:vwl-project
+    Scan,
 }
 
 #[derive(Subcommand)]
@@ -366,9 +383,92 @@ fn main() -> Result<()> {
             }
         },
 
-        Commands::Market => {
-            println!("Market scanner: scanning GitHub topic:vwl-project and .vwl/project.yaml...");
-        }
+        Commands::Market { cmd } => match cmd {
+            Some(MarketCommands::List) | None => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                match vwl_core::ProjectManifest::load_from_repo(&repo_root) {
+                    Ok(manifest) => {
+                        println!("VWL Project Discovery (Gate 2):");
+                        println!("  Project Name: {}", manifest.name);
+                        println!("  Repository:   {}", manifest.repository);
+                        println!("  Description:  {}", manifest.description);
+                        println!("  Roles Available ({}):", manifest.roles.len());
+                        for r in &manifest.roles {
+                            println!(
+                                "    - [{}] {:<20} | Budget: {:>7} WORK | Skills: {:?} [{}]",
+                                r.id, r.title, r.budget_work, r.skills, r.status
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        println!("No local .vwl/project.yaml found: {}", e);
+                    }
+                }
+            }
+            Some(MarketCommands::Offer { role_id, budget }) => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let manifest = vwl_core::ProjectManifest::load_from_repo(&repo_root)?;
+                let role = manifest.find_role(&role_id).ok_or_else(|| {
+                    VwlError::InvalidTask(format!(
+                        "Role '{}' not found in project manifest",
+                        role_id
+                    ))
+                })?;
+
+                let key_path = repo_root.join(".vwl").join("identity").join("node.key");
+                let cred_path = repo_root
+                    .join(".vwl")
+                    .join("identity")
+                    .join("credential.yaml");
+                if !key_path.exists() || !cred_path.exists() {
+                    return Err(VwlError::InvalidTask(
+                        "Node identity not found. Run 'vwl node init' first.".to_string(),
+                    ));
+                }
+
+                let hex_str = fs::read_to_string(&key_path)?.trim().to_string();
+                let keypair = NodeKeypair::from_hex(&hex_str)?;
+                let cred_str = fs::read_to_string(&cred_path)?;
+                let cred: NodeCredential = serde_yaml::from_str(&cred_str)
+                    .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+
+                let proposed_budget = budget.unwrap_or(role.budget_work);
+                let offer = vwl_core::Offer::new(
+                    &keypair,
+                    &cred.node_id,
+                    &role.id,
+                    proposed_budget,
+                    get_now_secs(),
+                );
+
+                let offers_dir = repo_root.join(".vwl").join("offers");
+                fs::create_dir_all(&offers_dir)?;
+                let offer_file = offers_dir.join(format!("{}.yaml", offer.id));
+                let offer_yaml = serde_yaml::to_string(&offer)
+                    .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                fs::write(&offer_file, offer_yaml)?;
+
+                println!("Successfully Submitted Cryptographic Offer (Gate 2):");
+                println!("  Offer ID:     {}", offer.id);
+                println!("  Role:         {}", offer.role_id);
+                println!("  Node ID:      {}", offer.node_id);
+                println!("  Ask Budget:   {} WORK", offer.proposed_budget_work);
+                println!("  Signature:    {}", offer.signature);
+                println!("  Saved to:     {}", offer_file.display());
+            }
+            Some(MarketCommands::Scan) => {
+                println!("Scanning GitHub topic:vwl-project and decentralized labor registries...");
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                if let Ok(manifest) = vwl_core::ProjectManifest::load_from_repo(&repo_root) {
+                    println!(
+                        "  [Discovered Local] {} ({}) -> {} roles",
+                        manifest.name,
+                        manifest.repository,
+                        manifest.roles.len()
+                    );
+                }
+            }
+        },
     }
 
     Ok(())

@@ -4,6 +4,7 @@ pub mod error;
 pub mod git;
 pub mod identity;
 pub mod ledger;
+pub mod market;
 pub mod proof;
 pub mod replay;
 pub mod skills;
@@ -21,6 +22,7 @@ pub use identity::{
     verify_signature, NodeCredential, NodeKeypair, ProjectCredential, SignedObject,
 };
 pub use ledger::LocalLedger;
+pub use market::{Offer, ProjectManifest, Role};
 pub use proof::{Proof, ProofEvidence, ProofType, Verdict};
 pub use replay::{ReplayEngine, ReplayState};
 pub use skills::{install_skill, list_skills, SkillDef, SKILLS};
