@@ -381,3 +381,108 @@ base: "{}"
     let tui_str = String::from_utf8_lossy(&tui_output.stdout);
     assert!(tui_str.contains("Headless TUI render for view 0 successful"));
 }
+
+#[test]
+fn test_cli_gh_whoami_and_issues() {
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["gh", "whoami", "--offline"])
+        .env("GH_TOKEN", "mock_gh_token_for_test")
+        .output()
+        .expect("vwl gh whoami");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("GitHub API Authentication (Offline / Env Check):"));
+    assert!(stdout.contains("Token Source: GH_TOKEN"));
+
+    let issues_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["gh", "issues", "--offline"])
+        .output()
+        .expect("vwl gh issues");
+
+    assert!(issues_output.status.success());
+    let issues_str = String::from_utf8_lossy(&issues_output.stdout);
+    assert!(issues_str.contains("GitHub Issues (Offline Projection):"));
+}
+
+#[test]
+fn test_cli_harness_list_and_start() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git init");
+
+    let list_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["harness", "list"])
+        .current_dir(temp.path())
+        .output()
+        .expect("vwl harness list");
+
+    assert!(list_output.status.success());
+    let list_str = String::from_utf8_lossy(&list_output.stdout);
+    assert!(list_str.contains("Supported VWL Agent Harnesses:"));
+    assert!(list_str.contains("gemini"));
+    assert!(list_str.contains("opencode"));
+    assert!(list_str.contains("claude"));
+    assert!(list_str.contains("copilot"));
+
+    let start_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["harness", "start", "--type", "gemini", "--dry-run"])
+        .current_dir(temp.path())
+        .output()
+        .expect("vwl harness start");
+
+    assert!(start_output.status.success());
+    let start_str = String::from_utf8_lossy(&start_output.stdout);
+    assert!(start_str.contains("Preflighting agent harness: gemini"));
+    assert!(start_str.contains("Harness Ready"));
+}
+
+#[test]
+fn test_cli_mcp_list_and_status() {
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["mcp", "list"])
+        .output()
+        .expect("vwl mcp list");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("VWL Model Context Protocol (MCP) Integrations:"));
+    assert!(stdout.contains("@vwl/stripe-mcp"));
+    assert!(stdout.contains("github-mcp"));
+    assert!(stdout.contains("stripe_create_payment_intent"));
+
+    let status_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["mcp", "status"])
+        .output()
+        .expect("vwl mcp status");
+
+    assert!(status_output.status.success());
+    let status_str = String::from_utf8_lossy(&status_output.stdout);
+    assert!(status_str.contains("MCP Runtime Status:"));
+}
+
+#[test]
+fn test_cli_wizard_summary_retro_banner() {
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["wizard", "--summary"])
+        .output()
+        .expect("vwl wizard");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Verifies retro robot ASCII geometry from icon.svg
+    assert!(stdout.contains("(o)"));
+    assert!(stdout.contains("(•) (•)"));
+    assert!(stdout.contains("[█]   [█]   [█]"));
+    assert!(stdout.contains("VIRTUAL WORK LEDGER"));
+    assert!(stdout.contains("Interactive Protocol Console"));
+    assert!(stdout.contains("[1] 🪙 Wallet & Economics"));
+    assert!(stdout.contains("[2] 📋 Project & Market Roles"));
+    assert!(stdout.contains("[3] 🤖 Agent Harness & Worker"));
+    assert!(stdout.contains("[4] 🐙 GitHub API Sync"));
+    assert!(stdout.contains("[5] 🔌 MCP Integrations"));
+    assert!(stdout.contains("[6] 🖥️ Launch TUI"));
+}
