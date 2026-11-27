@@ -249,7 +249,35 @@ impl App {
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw("Switch Views | "),
+            Span::raw("Views | "),
+            Span::styled(
+                " [w] ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Wallet | "),
+            Span::styled(
+                " [m] ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Market | "),
+            Span::styled(
+                " [p] ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Projects | "),
+            Span::styled(
+                " [v] ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Verifier | "),
             Span::styled(
                 " [r] ",
                 Style::default()
@@ -261,18 +289,74 @@ impl App {
                 " [q/Esc] ",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
-            Span::raw("Quit TUI"),
+            Span::raw("Quit"),
         ]);
-        let footer = Paragraph::new(footer_text)
-            .block(Block::default().borders(Borders::ALL).title(" Navigation "));
+        let footer = Paragraph::new(footer_text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Navigation & Hotkeys "),
+        );
         f.render_widget(footer, chunks[2]);
     }
 
     fn draw_home(&self, f: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(8), Constraint::Min(5)])
+            .constraints([Constraint::Length(10), Constraint::Min(5)])
             .split(area);
+
+        let top_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(22), Constraint::Min(40)])
+            .split(chunks[0]);
+
+        let robot_lines = vec![
+            Line::from(Span::styled(
+                "     (o)      ",
+                Style::default().fg(Color::Yellow),
+            )),
+            Line::from(Span::styled(
+                "    ┌─┴─┐     ",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(Span::styled(
+                " ┌──┴───┴──┐  ",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(vec![
+                Span::styled("┌┤ ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    "(•) (•)",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" ├┐ ", Style::default().fg(Color::DarkGray)),
+            ]),
+            Line::from(Span::styled(
+                "│└─────────┘│ ",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(vec![
+                Span::styled("│  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("┌─────┐", Style::default().fg(Color::Magenta)),
+                Span::styled("  │ ", Style::default().fg(Color::DarkGray)),
+            ]),
+            Line::from(Span::styled(
+                "└──┬─────┬──┘ ",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(vec![Span::styled(
+                "  [█] [█] [█] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )]),
+        ];
+
+        let robot_widget = Paragraph::new(robot_lines)
+            .block(Block::default().borders(Borders::ALL).title(" Robot Logo "));
+        f.render_widget(robot_widget, top_chunks[0]);
 
         let status_lines = vec![
             Line::from(vec![
@@ -307,7 +391,7 @@ impl App {
                 .borders(Borders::ALL)
                 .title(" System & Node Status (Gate 1) "),
         );
-        f.render_widget(status_widget, chunks[0]);
+        f.render_widget(status_widget, top_chunks[1]);
 
         let summary_lines = vec![
             Line::from(vec![
@@ -622,11 +706,13 @@ fn run_interactive_app(
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                     KeyCode::Tab | KeyCode::Right => app.next_tab(),
                     KeyCode::Left => app.prev_tab(),
-                    KeyCode::Char('1') => app.current_tab = 0,
-                    KeyCode::Char('2') => app.current_tab = 1,
-                    KeyCode::Char('3') => app.current_tab = 2,
-                    KeyCode::Char('4') => app.current_tab = 3,
-                    KeyCode::Char('5') => app.current_tab = 4,
+                    KeyCode::Char('1') | KeyCode::Char('h') => app.current_tab = 0,
+                    KeyCode::Char('2') | KeyCode::Char('m') => app.current_tab = 1,
+                    KeyCode::Char('3') | KeyCode::Char('p') | KeyCode::Char('g') => {
+                        app.current_tab = 2
+                    }
+                    KeyCode::Char('4') | KeyCode::Char('w') => app.current_tab = 3,
+                    KeyCode::Char('5') | KeyCode::Char('v') => app.current_tab = 4,
                     KeyCode::Char('r') => {
                         let cur = app.current_tab;
                         app = App::new(app.repo_root.clone());
@@ -722,6 +808,16 @@ mod tests {
                 rendered.contains("Virtual Work Ledger (VWL)"),
                 "Should contain header"
             );
+            if tab == 0 {
+                assert!(
+                    rendered.contains("(•) (•)"),
+                    "Tab 0 should display robot eyes"
+                );
+                assert!(
+                    rendered.contains("[█] [█] [█]"),
+                    "Tab 0 should display robot feet"
+                );
+            }
         }
     }
 

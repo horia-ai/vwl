@@ -3,6 +3,7 @@ pub mod decision;
 pub mod economics;
 pub mod error;
 pub mod git;
+pub mod github;
 pub mod identity;
 pub mod ledger;
 pub mod market;
@@ -22,6 +23,9 @@ pub use economics::{
 };
 pub use error::{Result, VwlError};
 pub use git::{GitInspector, GitRepoInfo};
+pub use github::{
+    resolve_github_token, GithubClient, GithubComment, GithubIssue, GithubSyncSummary, GithubUser,
+};
 pub use identity::{
     verify_signature, NodeCredential, NodeKeypair, ProjectCredential, SignedObject,
 };
