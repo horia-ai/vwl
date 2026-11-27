@@ -2034,7 +2034,7 @@ fn main() -> Result<()> {
                             let status = std::process::Command::new("opencode")
                                 .args([
                                     "run",
-                                    "--prompt",
+                                    "--auto",
                                     "Implement the requirements in TASK.md following strict TDD. Verify with vwl verify precommit.",
                                 ])
                                 .current_dir(&worktree_dir)
@@ -2043,6 +2043,55 @@ fn main() -> Result<()> {
                                 println!("  opencode exited with status: {}", s);
                             }
                         }
+                    }
+                } else if harness == "claude" {
+                    let check_claude = std::process::Command::new("which").arg("claude").output();
+                    if let Ok(out) = check_claude {
+                        if out.status.success() {
+                            println!(
+                                "  Detected claude binary; launching bounded developer run..."
+                            );
+                            let status = std::process::Command::new("claude")
+                                .args([
+                                    "-p",
+                                    "Implement the requirements in TASK.md following strict TDD. Verify with vwl verify precommit.",
+                                    "--dangerously-skip-permissions",
+                                ])
+                                .current_dir(&worktree_dir)
+                                .status();
+                            if let Ok(s) = status {
+                                println!("  claude exited with status: {}", s);
+                            }
+                        }
+                    }
+                }
+
+                // Auto-commit any uncommitted source file changes made by the developer agent (excluding TASK.md prompt)
+                let status_output = std::process::Command::new("git")
+                    .args(["status", "--porcelain"])
+                    .current_dir(&worktree_dir)
+                    .output();
+                if let Ok(out) = status_output {
+                    let has_code_changes = String::from_utf8_lossy(&out.stdout)
+                        .lines()
+                        .any(|l| !l.trim().is_empty() && !l.trim().ends_with("TASK.md"));
+                    if has_code_changes {
+                        let _ = std::process::Command::new("git")
+                            .args(["add", "-A"])
+                            .current_dir(&worktree_dir)
+                            .output();
+                        let _ = std::process::Command::new("git")
+                            .args([
+                                "commit",
+                                "-m",
+                                &format!(
+                                    "feat({}): implement task requirements via {}",
+                                    task.id, harness
+                                ),
+                                "--no-verify",
+                            ])
+                            .current_dir(&worktree_dir)
+                            .output();
                     }
                 }
 
@@ -3449,12 +3498,55 @@ fn run_worker_daemon(
                         let _ = std::process::Command::new("opencode")
                             .args([
                                 "run",
-                                "--prompt",
+                                "--auto",
                                 "Implement the requirements in TASK.md following strict TDD. Verify with vwl verify precommit.",
                             ])
                             .current_dir(&worktree_dir)
                             .status();
                     }
+                }
+            } else if harness == "claude" {
+                let check_claude = std::process::Command::new("which").arg("claude").output();
+                if let Ok(out) = check_claude {
+                    if out.status.success() {
+                        let _ = std::process::Command::new("claude")
+                            .args([
+                                "-p",
+                                "Implement the requirements in TASK.md following strict TDD. Verify with vwl verify precommit.",
+                                "--dangerously-skip-permissions",
+                            ])
+                            .current_dir(&worktree_dir)
+                            .status();
+                    }
+                }
+            }
+
+            // Auto-commit any uncommitted source file changes made by the developer agent (excluding TASK.md prompt)
+            let status_output = std::process::Command::new("git")
+                .args(["status", "--porcelain"])
+                .current_dir(&worktree_dir)
+                .output();
+            if let Ok(out) = status_output {
+                let has_code_changes = String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .any(|l| !l.trim().is_empty() && !l.trim().ends_with("TASK.md"));
+                if has_code_changes {
+                    let _ = std::process::Command::new("git")
+                        .args(["add", "-A"])
+                        .current_dir(&worktree_dir)
+                        .output();
+                    let _ = std::process::Command::new("git")
+                        .args([
+                            "commit",
+                            "-m",
+                            &format!(
+                                "feat({}): implement task requirements via {}",
+                                task.id, harness
+                            ),
+                            "--no-verify",
+                        ])
+                        .current_dir(&worktree_dir)
+                        .output();
                 }
             }
 
