@@ -17,6 +17,7 @@ fn test_cli_help_flag() {
     assert!(stdout.contains("replay"));
     assert!(stdout.contains("worker"));
     assert!(stdout.contains("skill"));
+    assert!(stdout.contains("node"));
 }
 
 #[test]
@@ -66,7 +67,6 @@ fn test_cli_skill_list_command() {
 #[test]
 fn test_cli_skill_install_command() {
     let temp = tempdir().unwrap();
-    // Initialize git repo in temp dir so GitInspector::find_repo_root finds it
     Command::new("git")
         .args(["init"])
         .current_dir(temp.path())
@@ -108,4 +108,66 @@ fn test_cli_skill_install_command() {
     let copilot_content =
         fs::read_to_string(temp.path().join(".github/copilot-instructions.md")).unwrap();
     assert!(copilot_content.contains("## Skill: tdd-mutation-testing"));
+}
+
+#[test]
+fn test_cli_node_identity_lifecycle() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to init git");
+
+    // 1. vwl node init
+    let init_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["node", "init", "--role", "developer", "--name", "Test Node"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute node init");
+    assert!(init_output.status.success());
+    let init_str = String::from_utf8_lossy(&init_output.stdout);
+    assert!(init_str.contains("Initialized Node Identity (Gate 1):"));
+    assert!(init_str.contains("Node ID:     node-ed25519-"));
+
+    // 2. vwl node show
+    let show_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["node", "show"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute node show");
+    assert!(show_output.status.success());
+    let show_str = String::from_utf8_lossy(&show_output.stdout);
+    assert!(show_str.contains("Active VWL Node Credential:"));
+    assert!(show_str.contains("[VALID]"));
+
+    // 3. vwl node sign
+    let sign_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["node", "sign", "evidence-payload-abc"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute node sign");
+    assert!(sign_output.status.success());
+    let sig = String::from_utf8_lossy(&sign_output.stdout)
+        .trim()
+        .to_string();
+    assert_eq!(sig.len(), 128); // 64 bytes in hex
+
+    // 4. Extract pubkey from credential.yaml and verify
+    let cred_content =
+        fs::read_to_string(temp.path().join(".vwl/identity/credential.yaml")).unwrap();
+    let pubkey_line = cred_content
+        .lines()
+        .find(|l| l.contains("public_key:"))
+        .unwrap();
+    let pubkey = pubkey_line.split(':').nth(1).unwrap().trim();
+
+    let verify_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["node", "verify", pubkey, "evidence-payload-abc", &sig])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute node verify");
+    assert!(verify_output.status.success());
+    let verify_str = String::from_utf8_lossy(&verify_output.stdout);
+    assert!(verify_str.contains("Signature VALID"));
 }
