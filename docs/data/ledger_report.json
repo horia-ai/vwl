@@ -1,17 +1,17 @@
 {
   "repo_name": "horia-ai/vwl",
-  "canonical_head": "3cb5894dee1a323a9eb07ee2a03f0b32c25e0e3c",
-  "total_tasks": 1,
-  "total_work_units": 1,
+  "canonical_head": "2f3049909334de5741fdeed8c3fe698d8459af05",
+  "total_tasks": 2,
+  "total_work_units": 2,
   "contributors": [
     {
       "contributor_id": "atrifan (Alex Trifan)",
       "role": "Lead Protocol Architect",
-      "confirmed_wus": 1,
+      "confirmed_wus": 2,
       "rejected_wus": 0,
       "first_pass_rate": 100.0,
       "effectiveness_score": 100.0,
-      "rep_earned": 60.0,
+      "rep_earned": 70.0,
       "paid_work": 50000,
       "pending_vesting_work": 25000,
       "reserved_work": 25000
@@ -24,9 +24,9 @@
     "total_reserved_escrow": 25000,
     "unallocated_balance": 900000,
     "milestone_budgets": {
-      "Gate 1 — Node and Project Identity": 100000,
       "Gate 5 — Local Economic State Machine": 200000,
       "Gate 0 — Minimum Falsifiable VWL": 100000,
+      "Gate 1 — Node and Project Identity": 100000,
       "Gate 7 — Testnet Contracts": 200000,
       "Gate 10 — DEX Liquidity": 400000
     }

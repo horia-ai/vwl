@@ -1,5 +1,6 @@
 use crate::decision::Decision;
 use crate::error::{Result, VwlError};
+use crate::graph::{Claim, TaskDependency, TaskGraph};
 use crate::proof::Proof;
 use crate::task::Task;
 use crate::work_unit::WorkUnit;
@@ -17,6 +18,8 @@ impl LocalLedger {
         fs::create_dir_all(root_dir.join("work_units"))?;
         fs::create_dir_all(root_dir.join("proofs"))?;
         fs::create_dir_all(root_dir.join("decisions"))?;
+        fs::create_dir_all(root_dir.join("dependencies"))?;
+        fs::create_dir_all(root_dir.join("claims"))?;
 
         Ok(Self { root_dir })
     }
@@ -90,6 +93,101 @@ impl LocalLedger {
         Ok(())
     }
 
+    pub fn append_dependency(&self, dep: &TaskDependency) -> Result<()> {
+        // Validate cycle prevention
+        let mut graph = self.get_task_graph()?;
+        graph.add_dependency(dep.clone())?;
+
+        let safe_from = dep.from_task.replace(['/', '\\', ':'], "_");
+        let safe_to = dep.to_task.replace(['/', '\\', ':'], "_");
+        let file_name = format!("{}_{}_{}.yaml", safe_from, safe_to, dep.kind.as_str());
+        let file_path = self.root_dir.join("dependencies").join(file_name);
+
+        if file_path.exists() {
+            return Ok(()); // Idempotent
+        }
+
+        let yaml =
+            serde_yaml::to_string(dep).map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(file_path, yaml)?;
+        Ok(())
+    }
+
+    pub fn get_dependencies(&self) -> Result<Vec<TaskDependency>> {
+        let mut deps = Vec::new();
+        let deps_dir = self.root_dir.join("dependencies");
+        if deps_dir.exists() {
+            for entry in fs::read_dir(deps_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    let dep: TaskDependency = serde_yaml::from_str(&content)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    deps.push(dep);
+                }
+            }
+        }
+        deps.sort();
+        Ok(deps)
+    }
+
+    pub fn append_claim(&self, claim: &Claim) -> Result<()> {
+        let safe_id = claim.task_id.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("claims")
+            .join(format!("{}.yaml", safe_id));
+        let yaml = serde_yaml::to_string(claim)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(file_path, yaml)?;
+        Ok(())
+    }
+
+    pub fn release_claim(&self, task_id: &str) -> Result<()> {
+        let safe_id = task_id.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("claims")
+            .join(format!("{}.yaml", safe_id));
+        if file_path.exists() {
+            let _ = fs::remove_file(file_path);
+        }
+        Ok(())
+    }
+
+    pub fn get_claims(&self) -> Result<Vec<Claim>> {
+        let mut claims = Vec::new();
+        let claims_dir = self.root_dir.join("claims");
+        if claims_dir.exists() {
+            for entry in fs::read_dir(claims_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    let claim: Claim = serde_yaml::from_str(&content)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    claims.push(claim);
+                }
+            }
+        }
+        claims.sort_by(|a, b| a.task_id.cmp(&b.task_id));
+        Ok(claims)
+    }
+
+    pub fn get_task_graph(&self) -> Result<TaskGraph> {
+        let mut graph = TaskGraph::new();
+        for task in self.get_tasks()? {
+            graph.add_task(task);
+        }
+        for dep in self.get_dependencies()? {
+            graph.dependencies.push(dep);
+        }
+        graph.validate_no_cycles()?;
+        for claim in self.get_claims()? {
+            graph.claims.insert(claim.task_id.clone(), claim);
+        }
+        Ok(graph)
+    }
+
     pub fn get_tasks(&self) -> Result<Vec<Task>> {
         let mut tasks = Vec::new();
         let tasks_dir = self.root_dir.join("tasks");
@@ -102,6 +200,7 @@ impl LocalLedger {
                 }
             }
         }
+        tasks.sort_by(|a, b| a.id.cmp(&b.id));
         Ok(tasks)
     }
 
@@ -117,6 +216,7 @@ impl LocalLedger {
                 }
             }
         }
+        work_units.sort_by(|a, b| a.commit.cmp(&b.commit));
         Ok(work_units)
     }
 
@@ -134,6 +234,7 @@ impl LocalLedger {
                 }
             }
         }
+        decisions.sort_by(|a, b| a.subject.cmp(&b.subject));
         Ok(decisions)
     }
 
