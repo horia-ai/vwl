@@ -250,6 +250,41 @@ impl<T: HttpTransport> GithubClient<T> {
         Ok(comment)
     }
 
+    pub fn create_issue(
+        &self,
+        owner: &str,
+        repo: &str,
+        title: &str,
+        body: Option<&str>,
+        labels: &[&str],
+    ) -> Result<GithubIssue> {
+        let url = format!("https://api.github.com/repos/{}/{}/issues", owner, repo);
+        let mut payload_map = serde_json::Map::new();
+        payload_map.insert(
+            "title".to_string(),
+            serde_json::Value::String(title.to_string()),
+        );
+        if let Some(b) = body {
+            payload_map.insert("body".to_string(), serde_json::Value::String(b.to_string()));
+        }
+        if !labels.is_empty() {
+            let label_vals: Vec<serde_json::Value> = labels
+                .iter()
+                .map(|l| serde_json::Value::String(l.to_string()))
+                .collect();
+            payload_map.insert("labels".to_string(), serde_json::Value::Array(label_vals));
+        }
+        let payload = serde_json::to_string(&payload_map)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        let res = self
+            .transport
+            .request("POST", &url, self.token.as_deref(), Some(&payload))?;
+        let raw: RawGithubIssue = serde_json::from_str(&res).map_err(|e| {
+            VwlError::SerializationError(format!("Failed to parse issue JSON: {}", e))
+        })?;
+        Ok(GithubIssue::from(raw))
+    }
+
     pub fn sync_ledger_to_github(
         &self,
         repo_root: &Path,

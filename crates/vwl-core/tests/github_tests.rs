@@ -162,6 +162,37 @@ fn test_github_client_add_comment_with_mock() {
 }
 
 #[test]
+fn test_github_create_issue_with_mock() {
+    let mock = MockHttpTransport::new();
+    mock.set_response(
+        "/repos/horia-ai/vwl/issues",
+        r#"{
+            "number": 101,
+            "title": "feat: follow-up spec update",
+            "state": "open",
+            "html_url": "https://github.com/horia-ai/vwl/issues/101",
+            "labels": [{"name": "vwl-task"}],
+            "body": "Falsifiable acceptance criteria..."
+        }"#,
+    );
+
+    let client = GithubClient::with_transport(Some("test_tok".to_string()), mock);
+    let issue = client
+        .create_issue(
+            "horia-ai",
+            "vwl",
+            "feat: follow-up spec update",
+            Some("Falsifiable acceptance criteria..."),
+            &["vwl-task"],
+        )
+        .expect("create_issue failed");
+
+    assert_eq!(issue.number, 101);
+    assert_eq!(issue.title, "feat: follow-up spec update");
+    assert_eq!(issue.labels, vec!["vwl-task"]);
+}
+
+#[test]
 fn test_github_sync_ledger_with_mock() {
     let dir = tempdir().unwrap();
     let repo_root = dir.path();
