@@ -663,35 +663,9 @@ fn main() -> Result<()> {
         },
 
         Commands::Tui { render_view } => {
-            let current_exe = std::env::current_exe().ok();
-            let sibling_bin = current_exe
-                .as_ref()
-                .and_then(|p| p.parent())
-                .map(|p| p.join("vwl-tui"))
-                .filter(|p| p.exists());
-
-            let mut cmd = match sibling_bin {
-                Some(bin_path) => std::process::Command::new(bin_path),
-                None => {
-                    let mut c = std::process::Command::new("cargo");
-                    c.arg("run")
-                        .arg("-p")
-                        .arg("vwl-tui")
-                        .arg("--quiet")
-                        .arg("--");
-                    c
-                }
-            };
-
-            if let Some(view) = render_view {
-                cmd.arg("--render-view").arg(view.to_string());
-            }
-            let status = cmd.status()?;
-            if !status.success() {
-                return Err(VwlError::LedgerError(
-                    "TUI exited with non-zero status".to_string(),
-                ));
-            }
+            let repo_root = GitInspector::find_repo_root(&current_dir).unwrap_or(current_dir);
+            vwl_tui::run_tui_command(repo_root, render_view)
+                .map_err(|e| VwlError::LedgerError(format!("TUI error: {}", e)))?;
         }
     }
 

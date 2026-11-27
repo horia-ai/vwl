@@ -908,6 +908,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "vwl-core",
+ "vwl-tui",
 ]
 
 [[package]]

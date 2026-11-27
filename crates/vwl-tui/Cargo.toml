@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+name = "vwl_tui"
+path = "src/lib.rs"
+
 [[bin]]
 name = "vwl-tui"
 path = "src/main.rs"

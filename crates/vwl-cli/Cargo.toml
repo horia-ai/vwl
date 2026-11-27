@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 vwl-core = { path = "../vwl-core" }
+vwl-tui = { path = "../vwl-tui" }
 clap = { workspace = true }
 serde_yaml = { workspace = true }
 serde_json = { workspace = true }
