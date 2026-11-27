@@ -61,7 +61,7 @@ Publishing is triggered automatically upon:
 To ensure rapid build times without incurring third-party cloud storage fees (AWS S3, GCP, or Azure), VWL uses **Mozilla `sccache` backed by the GitHub Actions Cache API**.
 
 ### How It Works
-* **Action:** `mozilla-actions/sccache-action@v0.0.8` (with `actions/github-script@v7` cache environment bridge)
+* **Action:** `mozilla-actions/sccache-action@v0.0.11` (with `actions/github-script@v7` cache environment bridge)
 * **Configuration:**
   ```yaml
   - name: Expose GitHub Actions Cache Environment
@@ -70,11 +70,10 @@ To ensure rapid build times without incurring third-party cloud storage fees (AW
       script: |
         core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || process.env.ACTIONS_RESULTS_URL || '');
         core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+        core.exportVariable('ACTIONS_CACHE_SERVICE_V2', process.env.ACTIONS_CACHE_SERVICE_V2 || 'true');
 
   - name: Set up sccache
-    uses: mozilla-actions/sccache-action@v0.0.8
-    with:
-      version: "v0.8.2"
+    uses: mozilla-actions/sccache-action@v0.0.11
 
   - name: Build Rust binary
     env:
