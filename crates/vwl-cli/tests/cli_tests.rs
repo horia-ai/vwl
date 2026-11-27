@@ -1439,3 +1439,54 @@ fn test_cli_harness_auto_bootstrap() {
     assert!(temp.path().join(".vwl/gates.yaml").exists());
     assert!(temp.path().join(".git/hooks/pre-commit").exists());
 }
+
+#[test]
+fn test_cli_supervisor_workflow() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Bootstrap repository
+    Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["bootstrap"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // 1. Test supervisor list
+    let list_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["supervisor", "list"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(list_out.status.success());
+    let list_str = String::from_utf8_lossy(&list_out.stdout);
+    assert!(list_str.contains("wave_planner"));
+    assert!(list_str.contains("dispatcher"));
+    assert!(list_str.contains("triage"));
+
+    // 2. Test supervisor run --json
+    let run_json_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["supervisor", "run", "all", "--json"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(run_json_out.status.success());
+    let run_json_str = String::from_utf8_lossy(&run_json_out.stdout);
+    assert!(run_json_str.contains("\"wave_planner\""));
+    assert!(run_json_str.contains("\"dispatcher\""));
+    assert!(run_json_str.contains("\"triage\""));
+
+    // 3. Test supervisor run dispatcher
+    let dispatch_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["supervisor", "run", "dispatcher"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(dispatch_out.status.success());
+    let dispatch_str = String::from_utf8_lossy(&dispatch_out.stdout);
+    assert!(dispatch_str.contains("[Supervisor: Dispatcher]"));
+}
