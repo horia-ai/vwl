@@ -10,7 +10,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 authors = ["Alex Trifan <trifan.alex.criss@gmail.com>"]
-license = "MIT OR Apache-2.0"
+license = "SEE LICENSE IN LICENSE"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }

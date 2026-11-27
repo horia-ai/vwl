@@ -1,0 +1,46 @@
+# VWL Community Source-Available License
+Version 1.0 (Usage & Local Evaluation Permitted, No-Distribution, No-Resale)
+
+Copyright (c) 2026 horia-ai / Alex Trifan. All rights reserved.
+
+---
+
+### 1. Purpose & Grant of License
+Subject to the terms, conditions, and strict restrictions of this License, the VWL Project maintainers ("Licensor") grant to each recipient a worldwide, non-exclusive, non-transferable, royalty-free license to:
+
+1. **View, Inspect & Research:** Read, inspect, and evaluate the source code, architecture, specifications, smart contracts, and documentation for personal, educational, research, and technical auditing purposes.
+2. **Local Build & Execution:** Download, compile, build, test, and run the Software locally on your own private device solely for personal evaluation, testing, benchmarking, and developing contributions to the official VWL Project (`https://github.com/horia-ai/vwl`).
+3. **Forks & Contributions:** Create forks on GitHub solely for the purpose of submitting contributions (pull requests, bug fixes, performance improvements, specification clarifications) back to the official upstream VWL repository.
+
+---
+
+### 2. Prohibited Uses (Strict Restrictions)
+You may **NOT**, under any circumstances, do any of the following without prior express written authorization from the Licensor:
+
+1. **No Resale or Commercial Exploitation:**
+   You may NOT sell, resell, lease, rent, license, sublicense, monetize, or commercially exploit this Software, source code, protocol specifications, smart contracts, tokens, or documentation, in whole or in part.
+
+2. **No Distribution or Redistribution:**
+   You may NOT distribute, redistribute, publish, mirror, sub-license, broadcast, or transmit copies of this Software, source code, compiled binaries, npm/cargo packages, or protocol specifications to any third party, whether for profit or free of charge, outside of contributing back to the official upstream VWL repository.
+
+3. **No Hosted or Competing Public Services (No Clones):**
+   You may NOT host, deploy, operate, or provide this Software or any derivative work as a publicly accessible service, commercial website, cloud platform, SaaS application, API, network validator, or competing protocol implementation.
+
+4. **No Code Extraction / Derivative Products:**
+   You may NOT extract, copy, adapt, or incorporate any portion of this codebase into other projects, platforms, libraries, token offerings, decentralized applications, or competing commercial or non-commercial products.
+
+5. **No Trademark or Brand Misuse:**
+   The trademarks, project names ("VWL", "Virtual Work Ledger", "Verified Work Ledger"), logos, and UI robot graphics are proprietary assets of the Licensor and are strictly excluded from derivative use.
+
+---
+
+### 3. Contribution Terms (Inbound = Outbound)
+By submitting any contribution (including pull requests, code, documentation, tests, issue discussions, or architecture specifications) to the VWL repository or project maintainers:
+
+1. You represent and warrant that the contribution is your original creation and that you have full legal right to grant all rights herein.
+2. You grant to the VWL Project maintainers an irrevocable, perpetual, worldwide, transferable, royalty-free, fully sublicensable license to use, reproduce, modify, adapt, publish, translate, create derivative works from, distribute, compile, and execute your contribution in connection with VWL and its software ecosystem.
+
+---
+
+### 4. Disclaimer of Warranty & Limitation of Liability
+THE SOFTWARE AND SPECIFICATIONS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS, COPYRIGHT HOLDERS, OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
