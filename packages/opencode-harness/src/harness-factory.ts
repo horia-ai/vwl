@@ -96,7 +96,7 @@ ${acceptanceBullets}
     const hasCodeChanges = status.split("\n").some((l) => l.trim() && !l.trim().endsWith("TASK.md"));
     if (hasCodeChanges) {
       execSync("git add -A", { cwd: worktreeDir, stdio: "ignore" });
-      execSync(`git commit -m "feat(${bounded.taskId}): implement task requirements via ${harness}" --no-verify`, {
+      execSync(`git commit -m "feat(${bounded.taskId}): implement task requirements via ${harness}"`, {
         cwd: worktreeDir,
         stdio: "ignore",
       });

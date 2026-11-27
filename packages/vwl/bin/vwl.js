@@ -241,15 +241,26 @@ install the native 'vwl' binary or compile via Cargo: cargo install --path crate
 echo "[VWL Hook] 🔍 Running pre-commit validator gates..."
 if command -v vwl >/dev/null 2>&1; then
   vwl verify precommit
+elif [ -x "$HOME/.cargo/bin/vwl" ]; then
+  "$HOME/.cargo/bin/vwl" verify precommit
+elif [ -x "./target/debug/vwl" ]; then
+  ./target/debug/vwl verify precommit
+elif [ -x "./target/release/vwl" ]; then
+  ./target/release/vwl verify precommit
+elif [ -f "./node_modules/.bin/vwl" ]; then
+  ./node_modules/.bin/vwl verify precommit
+elif command -v cargo >/dev/null 2>&1 && [ -f "./Cargo.toml" ]; then
+  cargo run --quiet -p vwl-cli -- verify precommit
 elif command -v npx >/dev/null 2>&1; then
-  npx @horia-ai/vwl verify precommit
+  npx -y @horia-ai/vwl verify precommit
 else
-  echo "[VWL Hook] ⚠️ Neither 'vwl' nor 'npx' found; skipping hook."
-  exit 0
+  echo "[VWL Hook] ❌ Pre-commit gate is NON-BYPASSABLE: neither 'vwl', 'cargo', nor 'npx' found."
+  echo "[VWL Hook] Commit aborted. Please install vwl or build with cargo to satisfy repository verification gates."
+  exit 1
 fi
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
-  echo "[VWL Hook] ❌ Pre-commit validation failed (exit code $EXIT_CODE)."
+  echo "[VWL Hook] ❌ Pre-commit validation failed (exit code $EXIT_CODE). Commit aborted."
   exit $EXIT_CODE
 fi
 echo "[VWL Hook] ✅ All pre-commit validator gates passed."

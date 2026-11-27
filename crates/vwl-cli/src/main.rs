@@ -1373,6 +1373,24 @@ fn main() -> Result<()> {
             base,
         } => {
             let repo_root = GitInspector::find_repo_root(&current_dir)?;
+
+            // Enforce non-bypassable pre-commit validator gates before candidate submission
+            let manifest = GatesManifest::load_or_detect(&repo_root)?;
+            let precommit_results = manifest.run_gates(&repo_root, true)?;
+            let failed_gates: Vec<_> = precommit_results.iter().filter(|r| !r.passed).collect();
+            if !failed_gates.is_empty() {
+                let failing_names: Vec<String> =
+                    failed_gates.iter().map(|r| r.name.clone()).collect();
+                eprintln!(
+                    "[VWL Submit] ❌ Pre-commit validator gates failed: {:?}",
+                    failing_names
+                );
+                return Err(VwlError::VerificationFailed(format!(
+                    "Pre-commit gate failed for candidate submission: {:?}",
+                    failing_names
+                )));
+            }
+
             let ledger = LocalLedger::new(&repo_root)?;
             let graph = ledger.get_task_graph()?;
             let decisions = ledger.get_decisions()?;
@@ -2853,7 +2871,6 @@ The Verifier runs in a fresh context with Zero Implementer Chat (0 conversationa
                     "commit",
                     "-m",
                     "chore(vwl): bootstrap VWL protocol gates, identity, and agent skills",
-                    "--no-verify",
                 ])
                 .current_dir(repo_root)
                 .output();
@@ -3242,11 +3259,28 @@ fn execute_bounded_developer(
             .lines()
             .any(|l| !l.trim().is_empty() && !l.trim().ends_with("TASK.md"));
         if has_code_changes {
+            let manifest = GatesManifest::load_or_detect(&worktree_dir)
+                .or_else(|_| GatesManifest::load_or_detect(repo_root))?;
+            let precommit_results = manifest.run_gates(&worktree_dir, true)?;
+            let failed_gates: Vec<_> = precommit_results.iter().filter(|r| !r.passed).collect();
+            if !failed_gates.is_empty() {
+                let failing_names: Vec<String> =
+                    failed_gates.iter().map(|r| r.name.clone()).collect();
+                eprintln!(
+                    "[Developer Worktree] ❌ Pre-commit gates failed: {:?}",
+                    failing_names
+                );
+                return Err(VwlError::VerificationFailed(format!(
+                    "Pre-commit gate failed in developer worktree: {:?}",
+                    failing_names
+                )));
+            }
+
             let _ = std::process::Command::new("git")
                 .args(["add", "-A"])
                 .current_dir(&worktree_dir)
                 .output();
-            let _ = std::process::Command::new("git")
+            let commit_res = std::process::Command::new("git")
                 .args([
                     "commit",
                     "-m",
@@ -3254,10 +3288,19 @@ fn execute_bounded_developer(
                         "feat({}): implement task requirements via {}",
                         task.id, harness
                     ),
-                    "--no-verify",
                 ])
                 .current_dir(&worktree_dir)
                 .output();
+            if let Ok(out) = commit_res {
+                if !out.status.success() {
+                    let err = String::from_utf8_lossy(&out.stderr);
+                    eprintln!("[Developer Worktree] ❌ Git commit failed: {}", err.trim());
+                    return Err(VwlError::VerificationFailed(format!(
+                        "Git commit failed in worktree: {}",
+                        err.trim()
+                    )));
+                }
+            }
         }
     }
 
