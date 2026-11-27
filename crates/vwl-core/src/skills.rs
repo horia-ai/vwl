@@ -31,8 +31,8 @@ pub const SKILLS: &[SkillDef] = &[
     },
     SkillDef {
         name: "repo-bootstrap-initializer",
-        description: "Autonomous agent skill to initialize VWL, inspect languages, generate .vwl/gates.yaml, and setup git pre-commit hooks",
-        content: "# VWL Repository Bootstrap & Initializer Protocol\n1. Inspect repository structure, toolchains, and package manifests.\n2. Run 'vwl init' to auto-detect languages and generate '.vwl/gates.yaml'.\n3. Verify '.git/hooks/pre-commit' is installed and executable.\n4. Initialize node identity with 'vwl node init --role <spec|developer|verifier>'.\n5. Run 'vwl verify precommit' to validate local baseline gates.\n6. Admit only falsifiable, unambiguous tasks via 'vwl task add --skeptic'.",
+        description: "Autonomous agent skill to initialize VWL, inspect languages, generate and validate .vwl/gates.yaml, setup git pre-commit hooks, and commit baseline configuration",
+        content: "# VWL Repository Bootstrap & Initializer Protocol\n\n## 1. Readiness Detection\nCheck whether the current repository has VWL initialized and verified:\n- If '.vwl/gates.yaml' is missing or baseline gates are unverified, run 'vwl bootstrap --harness <harness>'.\n- Verify '.git/hooks/pre-commit' is present and executable.\n- Verify node credential exists in '.vwl/identity/credential.yaml'.\n\n## 2. Deterministic Static Gate Validation\n- Inspect discovered gates in '.vwl/gates.yaml'. Ensure every precommit gate executes a static, predictable toolchain command.\n- Run 'vwl verify precommit' on the current codebase to validate that all manual gates pass on the clean base.\n- If any gate fails, adjust '.vwl/gates.yaml' or fix repository baseline defects before proceeding.\n\n## 3. Baseline Commit & Task Execution\n- Once all gates pass cleanly, stage and commit the bootstrap files ('git add .vwl .git/hooks/pre-commit && git commit -m \"chore(vwl): bootstrap VWL protocol gates and skills\"').\n- Ingest verified tasks with 'vwl task add <spec.yaml> --skeptic'.\n- Launch worker loop with 'vwl worker run --role developer'.",
     },
     SkillDef {
         name: "validator-wiring",
@@ -81,15 +81,23 @@ pub fn install_skill(repo_root: &Path, skill_name: &str, harness: &str) -> Resul
     for h in harnesses {
         match h {
             "opencode" => {
-                let target_dir = repo_root.join(".vwl").join("skills").join(skill.name);
-                fs::create_dir_all(&target_dir)?;
-                let file = target_dir.join("SKILL.md");
                 let doc = format!(
                     "---\nname: {}\ndescription: {}\n---\n\n{}\n",
                     skill.name, skill.description, skill.content
                 );
-                fs::write(&file, doc)?;
+                // Install into .vwl/skills/<name>/SKILL.md
+                let vwl_dir = repo_root.join(".vwl").join("skills").join(skill.name);
+                fs::create_dir_all(&vwl_dir)?;
+                let file = vwl_dir.join("SKILL.md");
+                fs::write(&file, &doc)?;
                 installed.push(file);
+
+                // Also install into .opencode/skills/<name>/SKILL.md for OpenCode auto-discovery
+                let opencode_dir = repo_root.join(".opencode").join("skills").join(skill.name);
+                fs::create_dir_all(&opencode_dir)?;
+                let oc_file = opencode_dir.join("SKILL.md");
+                fs::write(&oc_file, &doc)?;
+                installed.push(oc_file);
             }
             "claude" => {
                 let target_dir = repo_root.join(".claude").join("skills").join(skill.name);
@@ -143,6 +151,15 @@ pub fn install_skill(repo_root: &Path, skill_name: &str, harness: &str) -> Resul
     Ok(installed)
 }
 
+pub fn install_all_skills(repo_root: &Path, harness: &str) -> Result<Vec<PathBuf>> {
+    let mut all_installed = Vec::new();
+    for skill in SKILLS {
+        let mut paths = install_skill(repo_root, skill.name, harness)?;
+        all_installed.append(&mut paths);
+    }
+    Ok(all_installed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,10 +202,12 @@ mod tests {
     fn test_install_opencode_skill() {
         let temp = tempdir().unwrap();
         let paths = install_skill(temp.path(), "tdd-mutation-testing", "opencode").unwrap();
-        assert_eq!(paths.len(), 1);
+        assert_eq!(paths.len(), 2);
         let content = fs::read_to_string(&paths[0]).unwrap();
         assert!(content.contains("name: tdd-mutation-testing"));
         assert!(content.contains("Stryker mutation score"));
+        let oc_content = fs::read_to_string(&paths[1]).unwrap();
+        assert!(oc_content.contains("name: tdd-mutation-testing"));
     }
 
     #[test]
@@ -225,10 +244,13 @@ mod tests {
     fn test_install_all_and_custom_skill() {
         let temp = tempdir().unwrap();
         let paths = install_skill(temp.path(), "dex-liquidity-rules", "all").unwrap();
-        assert_eq!(paths.len(), 4);
+        assert_eq!(paths.len(), 5);
 
         let custom_paths = install_skill(temp.path(), "dex-liquidity-rules", "my-custom").unwrap();
         assert_eq!(custom_paths.len(), 1);
         assert!(custom_paths[0].ends_with(".vwl/custom-skills/dex-liquidity-rules/SKILL.md"));
+
+        let all_skills = install_all_skills(temp.path(), "gemini").unwrap();
+        assert_eq!(all_skills.len(), 10);
     }
 }

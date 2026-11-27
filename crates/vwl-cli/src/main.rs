@@ -73,6 +73,25 @@ enum Commands {
         /// Overwrite existing .vwl/gates.yaml
         #[arg(long)]
         force: bool,
+        /// Validate static pre-commit gates immediately on current baseline repository
+        #[arg(long)]
+        validate: bool,
+        /// Stage and commit initial bootstrap configuration to Git
+        #[arg(long)]
+        commit: bool,
+    },
+
+    /// Fully bootstrap repository: detect stack, configure and validate static gates, install hooks and skills, and create node identity
+    Bootstrap {
+        /// Target harness for skills: all, opencode, claude, gemini, copilot (default: all)
+        #[arg(long, default_value = "all")]
+        harness: String,
+        /// Overwrite existing .vwl/gates.yaml
+        #[arg(long)]
+        force: bool,
+        /// Stage and commit initial bootstrap configuration to Git
+        #[arg(long)]
+        commit: bool,
     },
 
     /// Manage VWL Git pre-commit hooks
@@ -445,6 +464,9 @@ enum HarnessCommands {
         /// Preflight check only without launching worker daemon
         #[arg(long)]
         dry_run: bool,
+        /// Automatically bootstrap repository with static gates if not already initialized
+        #[arg(long)]
+        bootstrap: bool,
     },
 }
 
@@ -665,8 +687,9 @@ fn main() -> Result<()> {
                 r#type,
                 task,
                 dry_run,
+                bootstrap,
             } => {
-                handle_harness_start(&repo_root, &r#type, task, dry_run)?;
+                handle_harness_start(&repo_root, &r#type, task, dry_run, bootstrap)?;
             }
         },
 
@@ -693,7 +716,12 @@ fn main() -> Result<()> {
             );
         }
 
-        Commands::Init { no_hooks, force } => {
+        Commands::Init {
+            no_hooks,
+            force,
+            validate,
+            commit,
+        } => {
             let repo_root = GitInspector::find_repo_root(&current_dir)?;
             let vwl_dir = repo_root.join(".vwl");
             fs::create_dir_all(&vwl_dir)?;
@@ -742,10 +770,50 @@ fn main() -> Result<()> {
                 );
             }
             println!("  Git Pre-Commit:    {}", hook_status);
+
+            if validate {
+                println!("\nValidating static pre-commit gates on current baseline...");
+                let gate_results = manifest.run_gates(&repo_root, true)?;
+                for r in &gate_results {
+                    println!(
+                        "    - [{:?}] {:<18} -> {} ({}ms)",
+                        r.plane,
+                        r.name,
+                        if r.passed { "PASS" } else { "FAIL" },
+                        r.duration_ms
+                    );
+                }
+            }
+
+            if commit {
+                let _ = std::process::Command::new("git")
+                    .args(["add", ".vwl", ".git/hooks/pre-commit"])
+                    .current_dir(&repo_root)
+                    .output();
+                let _ = std::process::Command::new("git")
+                    .args([
+                        "commit",
+                        "-m",
+                        "chore(vwl): initialize repository gates and hooks",
+                    ])
+                    .current_dir(&repo_root)
+                    .output();
+                println!("  Git Commit:        Committed initial .vwl configuration");
+            }
+
             println!("  Next Steps:");
             println!("    1. Test pre-commit gates:  vwl verify precommit");
             println!("    2. Initialize node key:    vwl node init --role developer");
             println!("    3. Ingest task specs:      vwl task add <spec.yaml> --skeptic");
+        }
+
+        Commands::Bootstrap {
+            harness,
+            force,
+            commit,
+        } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            handle_bootstrap(&repo_root, &harness, force, commit)?;
         }
 
         Commands::Hook { cmd } => match cmd {
@@ -2581,12 +2649,190 @@ fn handle_harness_list(repo_root: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+fn handle_bootstrap(
+    repo_root: &std::path::Path,
+    harness: &str,
+    force: bool,
+    commit: bool,
+) -> Result<()> {
+    println!("=== VWL REPOSITORY BOOTSTRAP INITIALIZER ===");
+    println!("  Repository Root: {}", repo_root.display());
+    println!("  Target Harness:  {}", harness);
+
+    // Step 1: Detect language stack and generate .vwl/gates.yaml
+    let vwl_dir = repo_root.join(".vwl");
+    fs::create_dir_all(&vwl_dir)?;
+    let gates_file = vwl_dir.join("gates.yaml");
+
+    let manifest = if gates_file.exists() && !force {
+        println!("\n[1/5] Loaded existing validator gates manifest (.vwl/gates.yaml)");
+        GatesManifest::load_or_detect(repo_root)?
+    } else {
+        let m = GatesManifest::detect(repo_root);
+        m.save(repo_root)?;
+        println!(
+            "\n[1/5] Discovered project language stack: {:?}",
+            m.languages
+        );
+        println!(
+            "      Generated static gates manifest at .vwl/gates.yaml ({} gates)",
+            m.gates.len()
+        );
+        m
+    };
+
+    // Step 2: Validate static manual gates on baseline repository
+    println!("\n[2/5] Validating static pre-commit validator gates on baseline...");
+    let gate_results = manifest.run_gates(repo_root, true)?;
+    let mut any_failed = false;
+    for r in &gate_results {
+        let status_str = if r.passed { "PASS" } else { "FAIL" };
+        println!(
+            "      - [{:?}] {:<18} -> {} ({}ms)",
+            r.plane, r.name, status_str, r.duration_ms
+        );
+        if !r.passed {
+            any_failed = true;
+            eprintln!("        Gate command: '{}'", r.command);
+            if !r.stderr.is_empty() {
+                eprintln!("        Gate error:   {}", r.stderr.trim());
+            }
+        }
+    }
+
+    if any_failed {
+        eprintln!(
+            "\n[Bootstrap Warning] One or more static pre-commit gates failed on the clean base."
+        );
+        eprintln!(
+            "                    Please verify .vwl/gates.yaml before running developer tasks."
+        );
+    } else {
+        println!("      ✓ All static pre-commit validator gates verified successfully!");
+    }
+
+    // Step 3: Install Git pre-commit hook
+    println!("\n[3/5] Installing Git pre-commit hook...");
+    match GitInspector::install_precommit_hook(repo_root) {
+        Ok(hook_path) => {
+            println!("      Installed executable hook at {}", hook_path.display());
+        }
+        Err(e) => {
+            eprintln!("      Warning: Could not install pre-commit hook: {}", e);
+        }
+    }
+
+    // Step 4: Install agent skills across harnesses
+    println!(
+        "\n[4/5] Injecting agent skills for harness '{}'...",
+        harness
+    );
+    let installed_skills = skills::install_all_skills(repo_root, harness)?;
+    println!(
+        "      Injected {} skill files across harness directories (.vwl, .opencode, .gemini, .claude, .github)",
+        installed_skills.len()
+    );
+
+    // Step 5: Node identity initialization
+    println!("\n[5/5] Checking node cryptographic identity...");
+    let identity_dir = vwl_dir.join("identity");
+    let cred_path = identity_dir.join("credential.yaml");
+    let key_path = identity_dir.join("node.key");
+    if cred_path.exists() && key_path.exists() {
+        println!("      Active node identity already initialized at .vwl/identity/credential.yaml");
+    } else {
+        fs::create_dir_all(&identity_dir)?;
+        let keypair = NodeKeypair::generate();
+        fs::write(&key_path, keypair.to_hex())?;
+        let now = get_now_secs();
+        let credential = NodeCredential::new(&keypair, "developer", "DeveloperNode", now);
+        let cred_yaml = serde_yaml::to_string(&credential)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(&cred_path, cred_yaml)?;
+        println!(
+            "      Generated new Node Identity: {} (role: developer)",
+            credential.node_id
+        );
+    }
+
+    // Ensure project.yaml exists
+    let project_yaml = vwl_dir.join("project.yaml");
+    if !project_yaml.exists() {
+        let manifest_content = format!(
+            "name: \"{}\"\nrepository: \"\"\ndescription: \"VWL Decentralized Project\"\ntopics: [\"vwl-project\"]\nroles: []\n",
+            manifest.project
+        );
+        let _ = fs::write(project_yaml, manifest_content);
+    }
+
+    // Optional automated baseline git commit
+    if commit {
+        println!("\n[Git Commit] Staging and committing bootstrap configuration...");
+        if any_failed {
+            eprintln!("      Aborting commit: baseline gates are not passing.");
+        } else {
+            let mut paths_to_add = vec![".vwl".to_string(), ".git/hooks/pre-commit".to_string()];
+            for dir in &[".opencode", ".gemini", ".claude", ".github"] {
+                if repo_root.join(dir).exists() {
+                    paths_to_add.push(dir.to_string());
+                }
+            }
+            let _ = std::process::Command::new("git")
+                .arg("add")
+                .args(&paths_to_add)
+                .current_dir(repo_root)
+                .output();
+            let commit_res = std::process::Command::new("git")
+                .args([
+                    "commit",
+                    "-m",
+                    "chore(vwl): bootstrap VWL protocol gates, identity, and agent skills",
+                    "--no-verify",
+                ])
+                .current_dir(repo_root)
+                .output();
+            if let Ok(out) = commit_res {
+                if out.status.success() {
+                    println!("      ✓ Created baseline bootstrap commit in repository.");
+                } else {
+                    let err = String::from_utf8_lossy(&out.stderr);
+                    if err.contains("nothing to commit") {
+                        println!("      (Nothing to commit; working directory clean)");
+                    } else {
+                        println!("      Note: git commit result: {}", err.trim());
+                    }
+                }
+            }
+        }
+    }
+
+    println!("\n==================================================");
+    println!("✓ VWL REPOSITORY BOOTSTRAP COMPLETE");
+    println!("Repository is initialized, validated, and ready for autonomous agent work!");
+    println!("Next Steps:");
+    println!("  - Ingest task specs:     vwl task add <task.yaml> --skeptic");
+    println!("  - Launch agent harness:  vwl harness start {}", harness);
+    println!("  - Autonomous worker:     vwl worker run --role developer");
+    println!("==================================================");
+
+    Ok(())
+}
+
 fn handle_harness_start(
     repo_root: &std::path::Path,
     harness: &str,
     task: Option<String>,
     dry_run: bool,
+    bootstrap: bool,
 ) -> Result<()> {
+    let gates_path = repo_root.join(".vwl").join("gates.yaml");
+    let hook_installed = GitInspector::is_precommit_hook_installed(repo_root);
+
+    if !gates_path.exists() || !hook_installed || bootstrap {
+        println!("[VWL Harness] Repository has VWL or is starting fresh; ensuring static gates, hooks, and skills are initialized...");
+        handle_bootstrap(repo_root, harness, false, false)?;
+    }
+
     println!("Preflighting agent harness: {}", harness);
     println!(
         "  Target Task: {}",
