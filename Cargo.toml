@@ -23,5 +23,5 @@ clap = { version = "4.4", features = ["derive"] }
 tempfile = "3.8"
 ratatui = "0.26"
 crossterm = "0.27"
-ed25519-dalek = { version = "2.1", default-features = false, features = ["rand_core", "serde"] }
+ed25519-dalek = { version = "3.0", default-features = false, features = ["rand_core", "serde"] }
 rand = "0.8"
