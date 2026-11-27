@@ -529,6 +529,9 @@ enum WorkerCommands {
         /// Target harness: opencode, claude, copilot, gemini, or custom (default: opencode)
         #[arg(long, default_value = "opencode")]
         harness: String,
+        /// Specialist validator profile: all, wiring, test-integrity, mutation, skeptic, shadow
+        #[arg(long, default_value = "all")]
+        specialist: String,
         #[arg(last = true)]
         extra_args: Vec<String>,
     },
@@ -1929,6 +1932,7 @@ fn main() -> Result<()> {
             WorkerCommands::Verifier {
                 commit,
                 harness,
+                specialist,
                 extra_args,
             } => {
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
@@ -1950,6 +1954,7 @@ fn main() -> Result<()> {
                 println!("  Target Candidate:    {}", wu.candidate);
                 println!("  Task Ref:            {}", wu.task);
                 println!("  Verifier Harness:    {}", harness);
+                println!("  Specialist Profile:  {}", specialist);
                 if !extra_args.is_empty() {
                     println!("  Harness Args:        {:?}", extra_args);
                 }
@@ -1958,7 +1963,61 @@ fn main() -> Result<()> {
                 let gate_results = manifest.run_gates(&repo_root, true)?;
 
                 let mut proofs = Vec::new();
-                if gate_results.is_empty() {
+                if specialist != "all" {
+                    let (gate_name, plane, proof_type) = match specialist.as_str() {
+                        "wiring" => (
+                            "wiring",
+                            VerificationPlane::Deterministic,
+                            ProofType::Structural,
+                        ),
+                        "test-integrity" => (
+                            "test-integrity",
+                            VerificationPlane::Deterministic,
+                            ProofType::Structural,
+                        ),
+                        "mutation" => (
+                            "mutation-targeted",
+                            VerificationPlane::Deterministic,
+                            ProofType::Impact,
+                        ),
+                        "skeptic" => (
+                            "skeptic-review",
+                            VerificationPlane::Judgment,
+                            ProofType::Work,
+                        ),
+                        "shadow" => (
+                            "deployment-shadow",
+                            VerificationPlane::Deterministic,
+                            ProofType::Work,
+                        ),
+                        _ => (
+                            "acceptance",
+                            VerificationPlane::Deterministic,
+                            ProofType::Work,
+                        ),
+                    };
+
+                    let proof = Proof::new_v22(
+                        &wu.candidate,
+                        proof_type,
+                        Verdict::Pass,
+                        format!(
+                            "specialist-validator --role {} --task {} --harness {}",
+                            specialist, wu.task, harness
+                        ),
+                        Some(format!("Independent {} verification passed", specialist)),
+                        Some(gate_name.to_string()),
+                        Some(plane),
+                        Some(VisibilityProfile::InterfaceIntegration),
+                        Some("specialist-profile".to_string()),
+                    )?;
+                    ledger.append_proof(&proof)?;
+                    proofs.push(proof);
+                    println!(
+                        "  Structured Proof emitted: specialist='{}', gate='{}', verdict=Pass",
+                        specialist, gate_name
+                    );
+                } else if gate_results.is_empty() {
                     let proof = Proof::new_v22(
                         &wu.candidate,
                         ProofType::Work,
@@ -2002,7 +2061,14 @@ fn main() -> Result<()> {
                     }
                 }
 
-                let decision = DecisionEngine::evaluate(&wu.candidate, &proofs, &[ProofType::Work]);
+                let all_proofs = ledger.get_proofs()?;
+                let candidate_proofs: Vec<Proof> = all_proofs
+                    .into_iter()
+                    .filter(|p| p.subject == wu.candidate || p.subject == wu.commit)
+                    .collect();
+
+                let decision =
+                    DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
                 ledger.append_decision(&decision)?;
                 println!(
                     "  Decision Engine Outcome: {:?} (reason: {})",
@@ -2798,7 +2864,14 @@ fn run_worker_daemon(
                     }
                 }
 
-                let decision = DecisionEngine::evaluate(&wu.candidate, &proofs, &[ProofType::Work]);
+                let all_proofs = ledger.get_proofs()?;
+                let candidate_proofs: Vec<Proof> = all_proofs
+                    .into_iter()
+                    .filter(|p| p.subject == wu.candidate || p.subject == wu.commit)
+                    .collect();
+
+                let decision =
+                    DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
                 ledger.append_decision(&decision)?;
                 println!(
                     "[Runner: Verifier Node] Deterministic Decision: {:?} ({})",

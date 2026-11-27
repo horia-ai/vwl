@@ -34,6 +34,31 @@ pub const SKILLS: &[SkillDef] = &[
         description: "Autonomous agent skill to initialize VWL, inspect languages, generate .vwl/gates.yaml, and setup git pre-commit hooks",
         content: "# VWL Repository Bootstrap & Initializer Protocol\n1. Inspect repository structure, toolchains, and package manifests.\n2. Run 'vwl init' to auto-detect languages and generate '.vwl/gates.yaml'.\n3. Verify '.git/hooks/pre-commit' is installed and executable.\n4. Initialize node identity with 'vwl node init --role <spec|developer|verifier>'.\n5. Run 'vwl verify precommit' to validate local baseline gates.\n6. Admit only falsifiable, unambiguous tasks via 'vwl task add --skeptic'.",
     },
+    SkillDef {
+        name: "validator-wiring",
+        description: "Specialist validator proving real runtime path reachability, route registration, and module linkage (Gate 14)",
+        content: "# Validator Skill: Wiring Proof (Gate 14)\n\n## Purpose\nProves implementation is actively wired and reachable through the intended runtime path, not merely invoked in isolated synthetic unit tests.\n\n## Verification Rules\n1. Inspect candidate diff for real wiring points (route registration, dependency injection, CLI commands, event listeners).\n2. Execute end-to-end wiring tests or symbol link checks.\n3. Fail if behavior exists in isolation without active integration.\n4. Emit structured Proof with gate='wiring' and plane=Deterministic.",
+    },
+    SkillDef {
+        name: "validator-test-integrity",
+        description: "Specialist validator detecting test/oracle relaxation, weakened assertions, and mock abuse (Gate 15)",
+        content: "# Validator Skill: Test Integrity Gate (Gate 15)\n\n## Purpose\nSurfaces and prevents test or oracle relaxation where tests are weakened simply to let an improper candidate pass.\n\n## Detection Invariants\n1. Check for deleted or commented-out assertion statements.\n2. Flag inflated timeouts, loosened property ranges, or catch-all exception swallows.\n3. Verify test assertions check real invariants rather than echo implementation output.\n4. Emit structured Proof or Challenge with reproducer artifact if tests are degraded.",
+    },
+    SkillDef {
+        name: "validator-targeted-mutation",
+        description: "Specialist validator executing targeted mutation analysis against modified lines and evaluating survivors (Gate 16)",
+        content: "# Validator Skill: Targeted Mutation (Gate 16)\n\n## Purpose\nValidates test rigor against candidate diffs using automated fault injection (Stryker / cargo-mutants).\n\n## Protocol\n1. Target mutation strictly to modified lines, branches, and affected test suites.\n2. Require minimum mutation score threshold (>=80%).\n3. Analyze surviving mutants: distinguish genuine behavioral escapes from equivalent mutants.\n4. Emit structured Proof with gate='mutation-targeted' and survivor analysis.",
+    },
+    SkillDef {
+        name: "validator-adversarial-skeptic",
+        description: "Specialist validator performing adversarial judgment evaluation for edge cases and spec drift (Plane 1)",
+        content: "# Validator Skill: Adversarial Skeptic (Plane 1 Judgment)\n\n## Purpose\nAdversarial evaluation testing boundary conditions, unstated assumptions, and conversational leakage.\n\n## Checklist\n1. Task self-containment: Reject dependencies on implementer chat or session memory.\n2. Boundary probing: Test zero/nil/empty, overflow, concurrency, and timeout conditions.\n3. Candidate isolation: Never rewrite candidate code; report defects through structured Challenge.\n4. Emit structured Proof with plane=Judgment.",
+    },
+    SkillDef {
+        name: "validator-shadow-smoke",
+        description: "Specialist validator executing read-only shadow traffic and isolated deployment smoke verification (Gate 18 & 19)",
+        content: "# Validator Skill: Shadow Traffic & Smoke Contract (Gate 18 & 19)\n\n## Purpose\nValidate candidate in containerized smoke/deployment and mirrored traffic without production state mutation.\n\n## Safety Invariants\n1. Read-only execution: Mutation calls MUST be rejected or mocked.\n2. Side-effect suppression: External webhooks, emails, and database writes suppressed.\n3. Bounded execution: Enforce request limit and duration timeouts.\n4. Emit structured Proof with gate='deployment-shadow'.",
+    },
 ];
 
 pub fn list_skills() -> Vec<(&'static str, &'static str)> {
@@ -126,7 +151,7 @@ mod tests {
     #[test]
     fn test_list_skills() {
         let skills = list_skills();
-        assert_eq!(skills.len(), 5);
+        assert_eq!(skills.len(), 10);
         assert!(skills
             .iter()
             .any(|(name, _)| *name == "tdd-mutation-testing"));
@@ -134,6 +159,19 @@ mod tests {
             .iter()
             .any(|(name, _)| *name == "repo-bootstrap-initializer"));
         assert!(skills.iter().any(|(name, _)| *name == "bounded-verifier"));
+        assert!(skills.iter().any(|(name, _)| *name == "validator-wiring"));
+        assert!(skills
+            .iter()
+            .any(|(name, _)| *name == "validator-test-integrity"));
+        assert!(skills
+            .iter()
+            .any(|(name, _)| *name == "validator-targeted-mutation"));
+        assert!(skills
+            .iter()
+            .any(|(name, _)| *name == "validator-adversarial-skeptic"));
+        assert!(skills
+            .iter()
+            .any(|(name, _)| *name == "validator-shadow-smoke"));
     }
 
     #[test]
