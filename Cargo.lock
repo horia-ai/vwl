@@ -908,6 +908,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "vwl-core",
+ "vwl-tui",
 ]
 
 [[package]]
@@ -929,8 +930,14 @@ dependencies = [
 name = "vwl-tui"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "crossterm",
  "ratatui",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "vwl-core",
 ]
 
 [[package]]
