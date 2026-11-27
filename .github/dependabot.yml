@@ -1,0 +1,50 @@
+version: 2
+updates:
+  # Cargo (Rust workspace)
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "type:security"
+      - "area:security"
+
+  # npm (Monorepo root)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "type:security"
+      - "area:security"
+
+  # npm (packages/stripe-mcp)
+  - package-ecosystem: "npm"
+    directory: "/packages/stripe-mcp"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "type:security"
+      - "area:security"
+
+  # npm (packages/vwl)
+  - package-ecosystem: "npm"
+    directory: "/packages/vwl"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "type:security"
+      - "area:security"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "type:security"
