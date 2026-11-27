@@ -2755,6 +2755,32 @@ fn handle_bootstrap(
         );
     }
 
+    // Write AGENTS.md instruction guide for autonomous agents
+    let agents_md = repo_root.join("AGENTS.md");
+    if !agents_md.exists() {
+        let agents_doc = r#"# Agent Instructions: Virtual Work Ledger (VWL) Protocol
+
+This repository is governed by the Virtual Work Ledger (VWL) decentralized evidence protocol.
+
+## Step 0: Initial Repository Setup & Gate Verification
+Whenever an agent session starts or resumes work in this repository:
+1. Verify VWL is initialized:
+   - Check that `.vwl/gates.yaml` exists.
+   - Check that `.git/hooks/pre-commit` is installed and executable.
+2. If VWL is not initialized or gates are unverified:
+   - Run `npx @horia-ai/vwl bootstrap` (or `vwl bootstrap --commit`).
+   - Run `npx @horia-ai/vwl verify precommit` to confirm all static validator gates pass on the clean base.
+   - Commit the baseline configuration before starting any task code.
+3. Task Execution Protocol:
+   - Inspect the current Work Frontier: `vwl frontier` (or `npx @horia-ai/vwl status`).
+   - Claim your assigned task: `vwl claim <task-id>`.
+   - Work in an isolated Git worktree (`vwl work <task-id>`).
+   - Enforce strict TDD and pass all static pre-commit gates.
+   - Submit candidate diff and proofs via `vwl submit`.
+"#;
+        let _ = fs::write(&agents_md, agents_doc);
+    }
+
     // Ensure project.yaml exists
     let project_yaml = vwl_dir.join("project.yaml");
     if !project_yaml.exists() {
@@ -2772,6 +2798,9 @@ fn handle_bootstrap(
             eprintln!("      Aborting commit: baseline gates are not passing.");
         } else {
             let mut paths_to_add = vec![".vwl".to_string(), ".git/hooks/pre-commit".to_string()];
+            if repo_root.join("AGENTS.md").exists() {
+                paths_to_add.push("AGENTS.md".to_string());
+            }
             for dir in &[".opencode", ".gemini", ".claude", ".github"] {
                 if repo_root.join(dir).exists() {
                     paths_to_add.push(dir.to_string());
