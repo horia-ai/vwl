@@ -1,0 +1,27 @@
+# Virtual Work Ledger (VWL) v2.2
+
+> Decentralized, evidence-governed autonomous work protocol. Enables independent agent workers and verifiers to coordinate, verify code candidates without shared conversational history, enforce deterministic technical authority, settle dual-signed economic escrow, and measure code-lineage evidence coverage via Repometer.
+
+## Architecture & Foundational Specifications
+- [Core Protocol & Verification Factory](docs/wiki-llm/01-protocol-core-and-verification-factory.md): Authoritative specification for 4-Graph architecture (Intent, Provenance, Evidence, Impact), WorkUnits, Verification Factory planes, gates, reproducer challenges, and replay.
+- [Protocol CLI & GitHub Projection](docs/wiki-llm/02-protocol-cli-and-github-projection.md): Authoritative CLI/TUI contracts, Work Frontier synchronization, and GitHub WorkHost projection.
+- [Economics & Settlement v1.1](docs/wiki-llm/03-economics-and-settlement.md): Authoritative economic design, REP scoring, WORK token wages, escrow engagements, vesting schedules, Solidity smart contract equivalence, and DEX pool.
+- [Bootstrap Work Ledger](docs/wiki-llm/04-bootstrap-work-ledger.md): Falsification discipline and gate delivery ledger (G0 through G10).
+- [Wiki Index & System Invariants](docs/wiki-llm/README.md): Comprehensive LLM navigation guide, core invariants, and quick command reference.
+
+## Protocol Invariants for Coding Agents
+- Zero-Chat Verifier: Independent verifiers receive bounded code and tests; they never receive implementer chat logs.
+- Candidate Isolation: Verifier agents evaluate and challenge code; they never mutate candidate branches directly.
+- Deterministic Decision Engine: Technical authority is decided by deterministic gate evaluation, never directly by an LLM verdict.
+- Append-Only Authority: Regressions append Outcome records; historical Decisions are never rewritten.
+- Forward-Only Repair: Regressions trigger new repair tasks and work units, advancing the canonical head.
+- Repometer Binding: Coverage claims must bind to canonical tree SHA, denominator LOC, and methodology.
+- Pure Functional Replay: State reconstructed from Git + ledger must match bit-for-bit without external database dependencies.
+
+## Key CLI Commands
+- `vwl replay`: Deterministically reconstruct authoritative state from Git + Ledger across all four graphs.
+- `vwl frontier`: Inspect ready, unblocked tasks on the Work Frontier.
+- `vwl verify run <work-unit>`: Derive and execute Verification Factory gates against candidate work units.
+- `vwl repometer --explain`: Calculate 8-dimension evidence and code-lineage coverage bound to canonical tree.
+- `vwl outcome list`: Inspect post-confirmation outcomes and regression evidence.
+- `vwl report --gh-pages --json`: Generate contributor effectiveness and cost allocation report.

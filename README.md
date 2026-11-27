@@ -164,5 +164,17 @@ Every PR must strictly follow the **Red $\to$ Green $\to$ Refactor $\to$ Mutate*
 
 ---
 
+## 📚 Wiki-LLM & Authoritative Specifications
+
+The complete v2.2 protocol and architecture specifications are curated for LLMs, autonomous coding agents, and developers in [`docs/wiki-llm/`](docs/wiki-llm/README.md) and [`llms.txt`](llms.txt):
+
+- **[VWL v2.2 Core Protocol & Verification Factory](docs/wiki-llm/01-protocol-core-and-verification-factory.md)**: 4-Graph model, WorkUnits, Verification Factory planes/gates/shadow contracts, and Replay.
+- **[VWL v2.2 Protocol CLI & GitHub Projection](docs/wiki-llm/02-protocol-cli-and-github-projection.md)**: CLI subcommands (`work`, `verify`, `graph`, `repometer`, `outcome`), TUI, and GitHub WorkHost projection.
+- **[VWL Economics & Settlement v1.1](docs/wiki-llm/03-economics-and-settlement.md)**: REP scoring, WORK wages, Escrow, Vesting schedules, Solidity smart contract equivalence, and DEX liquidity.
+- **[VWL Bootstrap Work Ledger v1.1](docs/wiki-llm/04-bootstrap-work-ledger.md)**: Falsification gates (G0 through G10) and bootstrap discipline.
+- **[Single-File Aggregated LLM Bundle](llms-full.txt)**: Combined, unabridged specification text for instant LLM prompt context ingestion.
+
+---
+
 ## 📄 License
-Licensed under either of [MIT](LICENSE) or [Apache-2.0](LICENSE) at your option.
+Licensed under the [VWL Community Source-Available License](LICENSE) (Usage & Local Evaluation Permitted, No-Distribution, No-Resale). Copyright &copy; 2026 horia-ai / Alex Trifan. All rights reserved.
