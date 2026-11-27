@@ -66,6 +66,29 @@ install the native 'vwl' binary or compile via Cargo: cargo install --path crate
     return 0;
   }
 
+  if (cmd === "dev" || cmd === "developer") {
+    const gatesPath = resolve(cwd, ".vwl/gates.yaml");
+    if (!existsSync(gatesPath)) {
+      console.log("[VWL Developer] Ensuring repository gates and skills are initialized...");
+      runNodeFallback(["bootstrap"], cwd);
+    }
+    const opencodeCheck = spawnSync("which", ["opencode"], { encoding: "utf-8" });
+    if (opencodeCheck.status === 0) {
+      console.log("[VWL Developer] Launching OpenCode developer agent...");
+      const res = spawnSync("opencode", args.slice(1), { stdio: "inherit", cwd });
+      return res.status ?? 0;
+    }
+    const claudeCheck = spawnSync("which", ["claude"], { encoding: "utf-8" });
+    if (claudeCheck.status === 0) {
+      console.log("[VWL Developer] Launching Claude Code developer agent...");
+      const res = spawnSync("claude", args.slice(1), { stdio: "inherit", cwd });
+      return res.status ?? 0;
+    }
+    console.log("[VWL Developer] Work frontier check requires native vwl binary or cargo.");
+    console.log("Install native vwl: cargo install --path crates/vwl-cli");
+    return 1;
+  }
+
   if (cmd === "postinstall") {
     const targetCwd = process.env.INIT_CWD || process.cwd();
     const pkgRoot = resolve(__dirname, "..");
