@@ -57,7 +57,7 @@ export function installSkill(
   }
 
   const harnesses: HarnessType[] =
-    targetHarness === "all" ? ["opencode", "claude", "copilot"] : [targetHarness];
+    targetHarness === "all" ? ["opencode", "claude", "copilot", "gemini"] : [targetHarness];
 
   const installedPaths: string[] = [];
 

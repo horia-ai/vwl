@@ -51,7 +51,7 @@ enum Commands {
         cmd: WorkerCommands,
     },
 
-    /// Manage and inject agent skills into repository (.claude, .github, .vwl)
+    /// Manage and inject agent skills into repository (.claude, .gemini, .github, .vwl)
     Skill {
         #[command(subcommand)]
         cmd: SkillCommands,
@@ -72,7 +72,7 @@ enum WorkerCommands {
     /// Execute developer agent with bounded context (WU-G0-010)
     Developer {
         task_id: String,
-        /// Target harness: opencode, claude, copilot, or custom (default: opencode)
+        /// Target harness: opencode, claude, copilot, gemini, or custom (default: opencode)
         #[arg(long, default_value = "opencode")]
         harness: String,
         #[arg(last = true)]
@@ -81,7 +81,7 @@ enum WorkerCommands {
     /// Execute independent verifier with no implementer chat (WU-G0-011)
     Verifier {
         commit: String,
-        /// Target harness: opencode, claude, copilot, or custom (default: opencode)
+        /// Target harness: opencode, claude, copilot, gemini, or custom (default: opencode)
         #[arg(long, default_value = "opencode")]
         harness: String,
         #[arg(last = true)]
@@ -97,7 +97,7 @@ enum SkillCommands {
     Install {
         /// Skill name (e.g., tdd-mutation-testing, bounded-verifier, economic-conservation, dex-liquidity-rules)
         name: String,
-        /// Target harness: opencode, claude, copilot, or all (default: all)
+        /// Target harness: opencode, claude, copilot, gemini, or all (default: all)
         #[arg(long, default_value = "all")]
         harness: String,
     },

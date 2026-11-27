@@ -43,7 +43,7 @@ pub fn install_skill(repo_root: &Path, skill_name: &str, harness: &str) -> Resul
 
     let mut installed = Vec::new();
     let harnesses: Vec<&str> = if harness == "all" {
-        vec!["opencode", "claude", "copilot"]
+        vec!["opencode", "claude", "copilot", "gemini"]
     } else {
         vec![harness]
     };
@@ -63,6 +63,17 @@ pub fn install_skill(repo_root: &Path, skill_name: &str, harness: &str) -> Resul
             }
             "claude" => {
                 let target_dir = repo_root.join(".claude").join("skills").join(skill.name);
+                fs::create_dir_all(&target_dir)?;
+                let file = target_dir.join("SKILL.md");
+                let doc = format!(
+                    "---\nname: {}\ndescription: {}\n---\n\n{}\n",
+                    skill.name, skill.description, skill.content
+                );
+                fs::write(&file, doc)?;
+                installed.push(file);
+            }
+            "gemini" => {
+                let target_dir = repo_root.join(".gemini").join("skills").join(skill.name);
                 fs::create_dir_all(&target_dir)?;
                 let file = target_dir.join("SKILL.md");
                 let doc = format!(
@@ -145,6 +156,16 @@ mod tests {
     }
 
     #[test]
+    fn test_install_gemini_skill() {
+        let temp = tempdir().unwrap();
+        let paths = install_skill(temp.path(), "economic-conservation", "gemini").unwrap();
+        assert_eq!(paths.len(), 1);
+        let content = fs::read_to_string(&paths[0]).unwrap();
+        assert!(content.contains("name: economic-conservation"));
+        assert!(content.contains("Total WORK = Liquid"));
+    }
+
+    #[test]
     fn test_install_copilot_skill() {
         let temp = tempdir().unwrap();
         let paths = install_skill(temp.path(), "economic-conservation", "copilot").unwrap();
@@ -158,7 +179,7 @@ mod tests {
     fn test_install_all_and_custom_skill() {
         let temp = tempdir().unwrap();
         let paths = install_skill(temp.path(), "dex-liquidity-rules", "all").unwrap();
-        assert_eq!(paths.len(), 3);
+        assert_eq!(paths.len(), 4);
 
         let custom_paths = install_skill(temp.path(), "dex-liquidity-rules", "my-custom").unwrap();
         assert_eq!(custom_paths.len(), 1);

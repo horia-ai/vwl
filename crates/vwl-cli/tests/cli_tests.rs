@@ -99,6 +99,10 @@ fn test_cli_skill_install_command() {
         .path()
         .join(".claude/skills/tdd-mutation-testing/SKILL.md")
         .exists());
+    assert!(temp
+        .path()
+        .join(".gemini/skills/tdd-mutation-testing/SKILL.md")
+        .exists());
     assert!(temp.path().join(".github/copilot-instructions.md").exists());
 
     let copilot_content =

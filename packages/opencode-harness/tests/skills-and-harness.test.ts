@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 
 describe("Agent Harness Factory & Skill Installer Tests", () => {
-  it("provides adapters for opencode, claude, copilot, and custom", async () => {
+  it("provides adapters for opencode, claude, copilot, gemini, and custom", async () => {
     const opencode = getHarnessAdapter("opencode");
     expect(opencode.name).toBe("opencode");
 
@@ -15,6 +15,9 @@ describe("Agent Harness Factory & Skill Installer Tests", () => {
 
     const copilot = getHarnessAdapter("copilot");
     expect(copilot.name).toBe("copilot");
+
+    const gemini = getHarnessAdapter("gemini");
+    expect(gemini.name).toBe("gemini");
 
     const custom = getHarnessAdapter("custom");
     expect(custom.name).toBe("custom");
@@ -30,11 +33,11 @@ describe("Agent Harness Factory & Skill Installer Tests", () => {
     expect(skills).toContain("dex-liquidity-rules");
   });
 
-  it("installs skill into target harness paths (Claude, Copilot, OpenCode)", () => {
+  it("installs skill into target harness paths (Claude, Copilot, OpenCode, Gemini)", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vwl-skill-test-"));
 
     const installed = installSkill(tmpDir, "tdd-mutation-testing", "all");
-    expect(installed.length).toBe(3);
+    expect(installed.length).toBe(4);
 
     // Verify Claude SKILL.md
     const claudeSkill = path.join(tmpDir, ".claude", "skills", "tdd-mutation-testing", "SKILL.md");
@@ -44,6 +47,11 @@ describe("Agent Harness Factory & Skill Installer Tests", () => {
     // Verify OpenCode SKILL.md
     const opencodeSkill = path.join(tmpDir, ".vwl", "skills", "tdd-mutation-testing", "SKILL.md");
     expect(fs.existsSync(opencodeSkill)).toBe(true);
+
+    // Verify Gemini SKILL.md
+    const geminiSkill = path.join(tmpDir, ".gemini", "skills", "tdd-mutation-testing", "SKILL.md");
+    expect(fs.existsSync(geminiSkill)).toBe(true);
+    expect(fs.readFileSync(geminiSkill, "utf-8")).toContain("TDD & Mutation Testing Protocol");
 
     // Verify Copilot instructions
     const copilotInstructions = path.join(tmpDir, ".github", "copilot-instructions.md");

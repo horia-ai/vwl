@@ -10,7 +10,7 @@ import {
 } from "./verifier.js";
 import path from "node:path";
 
-export type HarnessType = "opencode" | "claude" | "copilot" | "custom";
+export type HarnessType = "opencode" | "claude" | "copilot" | "gemini" | "custom";
 
 export interface HarnessAdapter {
   name: HarnessType;
@@ -99,6 +99,35 @@ export class CopilotHarnessAdapter implements HarnessAdapter {
   }
 }
 
+export class GeminiHarnessAdapter implements HarnessAdapter {
+  public readonly name: HarnessType = "gemini";
+
+  public async executeDeveloper(context: TaskContext): Promise<WorkerExecutionResult> {
+    const bounded = createBoundedWorkerContext(context);
+    return {
+      taskId: bounded.taskId,
+      candidateCommit: `gemini-${bounded.taskId.toLowerCase()}`,
+      status: "success",
+      logs: `Gemini / Antigravity agent executed bounded task ${bounded.taskId} in isolated worktree`,
+    };
+  }
+
+  public executeVerifier(context: VerifierContext, exitCode: number, output: string): ProofVerdict {
+    const verdict = evaluateVerificationEvidence(context, exitCode, output);
+    return {
+      ...verdict,
+      evidence: {
+        command: "gemini verify --non-interactive",
+        output: output.slice(0, 1000),
+      },
+    };
+  }
+
+  public getSkillTargetDir(repoRoot: string): string {
+    return path.join(repoRoot, ".gemini", "skills");
+  }
+}
+
 export class CustomHarnessAdapter implements HarnessAdapter {
   public readonly name: HarnessType = "custom";
 
@@ -129,6 +158,8 @@ export function getHarnessAdapter(type: HarnessType): HarnessAdapter {
       return new ClaudeHarnessAdapter();
     case "copilot":
       return new CopilotHarnessAdapter();
+    case "gemini":
+      return new GeminiHarnessAdapter();
     case "custom":
       return new CustomHarnessAdapter();
     default:
