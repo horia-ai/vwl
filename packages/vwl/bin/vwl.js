@@ -30,8 +30,8 @@ export function findVwlBinary() {
   return null;
 }
 
-export function runNodeFallback(args) {
-  const cwd = process.cwd();
+export function runNodeFallback(args, customCwd = null) {
+  const cwd = customCwd || process.cwd();
   const cmd = args[0] || "--help";
 
   if (cmd === "--help" || cmd === "-h" || cmd === "help") {
@@ -55,6 +55,24 @@ install the native 'vwl' binary or compile via Cargo: cargo install --path crate
     console.log("Virtual Work Ledger (VWL) Status [Node Fallback]:");
     console.log(`  Repository Root: ${cwd}`);
     console.log(`  HEAD SHA:        ${head}`);
+    return 0;
+  }
+
+  if (cmd === "postinstall") {
+    const targetCwd = process.env.INIT_CWD || process.cwd();
+    const pkgRoot = resolve(__dirname, "..");
+
+    // Avoid running inside the package's own root during development/testing
+    if (targetCwd === pkgRoot || resolve(targetCwd, "packages/vwl") === pkgRoot) {
+      return 0;
+    }
+
+    const gatesPath = resolve(targetCwd, ".vwl/gates.yaml");
+    if (!existsSync(gatesPath)) {
+      console.log(`[VWL] 🚀 Installed @horia-ai/vwl in ${targetCwd}`);
+      console.log("[VWL] 🛠️ Auto-initializing repository gates and agent protocols...");
+      runNodeFallback(["bootstrap"], targetCwd);
+    }
     return 0;
   }
 
@@ -211,6 +229,32 @@ exit 0
       writeFileSync(resolve(ocDir, "SKILL.md"), doc);
     }
 
+    // Write AGENTS.md instruction guide for autonomous agents
+    const agentsMdPath = resolve(cwd, "AGENTS.md");
+    if (!existsSync(agentsMdPath)) {
+      const agentsMdContent = `# Agent Instructions: Virtual Work Ledger (VWL) Protocol
+
+This repository is governed by the Virtual Work Ledger (VWL) decentralized evidence protocol.
+
+## Step 0: Initial Repository Setup & Gate Verification
+Whenever an agent session starts or resumes work in this repository:
+1. Verify VWL is initialized:
+   - Check that \`.vwl/gates.yaml\` exists.
+   - Check that \`.git/hooks/pre-commit\` is installed and executable.
+2. If VWL is not initialized or gates are unverified:
+   - Run \`npx @horia-ai/vwl bootstrap\` (or \`vwl bootstrap --commit\`).
+   - Run \`npx @horia-ai/vwl verify precommit\` to confirm all static validator gates pass on the clean base.
+   - Commit the baseline configuration before starting any task code.
+3. Task Execution Protocol:
+   - Inspect the current Work Frontier: \`vwl frontier\` (or \`npx @horia-ai/vwl status\`).
+   - Claim your assigned task: \`vwl claim <task-id>\`.
+   - Work in an isolated Git worktree (\`vwl work <task-id>\`).
+   - Enforce strict TDD and pass all static pre-commit gates.
+   - Submit candidate diff and proofs via \`vwl submit\`.
+`;
+      writeFileSync(agentsMdPath, agentsMdContent);
+    }
+
     console.log("=== VWL REPOSITORY BOOTSTRAP COMPLETE [Node Runner] ===");
     console.log(`  Project:         ${projectName}`);
     console.log(`  Detected Stack:  ${languages.join(", ")}`);
@@ -229,6 +273,11 @@ exit 0
 }
 
 export function runCli(args = process.argv.slice(2)) {
+  const cmd = args[0];
+  if (cmd === "postinstall") {
+    return runNodeFallback(args);
+  }
+
   const binary = findVwlBinary();
 
   if (binary) {

@@ -13,7 +13,8 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "start": "node ./bin/vwl.js"
+    "start": "node ./bin/vwl.js",
+    "postinstall": "node ./bin/vwl.js postinstall"
   },
   "publishConfig": {
     "access": "public",
