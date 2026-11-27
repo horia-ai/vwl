@@ -27,8 +27,8 @@ pub use economics::{
 };
 pub use error::{Result, VwlError};
 pub use factory::{
-    Challenge, ChangeProfile, RiskLevel, RiskProfile, ShadowTrafficContract, TestIntegrityGate,
-    VerificationPlan, VerifierArtifact, WiringGate,
+    Challenge, ChangeProfile, GateDefinition, GateRunResult, GatesManifest, RiskLevel, RiskProfile,
+    ShadowTrafficContract, TestIntegrityGate, VerificationPlan, VerifierArtifact, WiringGate,
 };
 pub use git::{GitInspector, GitRepoInfo};
 pub use github::{

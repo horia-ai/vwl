@@ -1,6 +1,7 @@
 use crate::error::{Result, VwlError};
 use crate::proof::{Proof, ProofType, Verdict, VerificationPlane, VisibilityProfile};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
@@ -347,5 +348,285 @@ impl ShadowTrafficContract {
             ));
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GateDefinition {
+    pub name: String,
+    pub plane: VerificationPlane,
+    pub command: String,
+    pub precommit: bool,
+    pub timeout_secs: u64,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GatesManifest {
+    pub version: String,
+    pub project: String,
+    pub languages: Vec<String>,
+    pub gates: Vec<GateDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GateRunResult {
+    pub name: String,
+    pub plane: VerificationPlane,
+    pub command: String,
+    pub passed: bool,
+    pub duration_ms: u64,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl GatesManifest {
+    pub fn detect(repo_root: &Path) -> Self {
+        let mut languages = Vec::new();
+        let mut gates = Vec::new();
+
+        // 1. Rust detection
+        if repo_root.join("Cargo.toml").exists() {
+            languages.push("rust".to_string());
+            gates.push(GateDefinition {
+                name: "unit-tests".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "cargo test --workspace".to_string(),
+                precommit: true,
+                timeout_secs: 120,
+                description: "Deterministic Rust test suite execution".to_string(),
+            });
+            gates.push(GateDefinition {
+                name: "clippy-lint".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "cargo clippy --all-targets --all-features -- -D warnings".to_string(),
+                precommit: true,
+                timeout_secs: 60,
+                description: "Enforce zero compiler and clippy warnings".to_string(),
+            });
+            gates.push(GateDefinition {
+                name: "format-check".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "cargo fmt --check".to_string(),
+                precommit: true,
+                timeout_secs: 30,
+                description: "Enforce standard rustfmt style".to_string(),
+            });
+        }
+
+        // 2. Node / TypeScript / JavaScript detection
+        let pkg_json = repo_root.join("package.json");
+        if pkg_json.exists() {
+            let is_ts = repo_root.join("tsconfig.json").exists();
+            languages.push(if is_ts {
+                "typescript".to_string()
+            } else {
+                "javascript".to_string()
+            });
+
+            let mut has_test = true;
+            let mut has_lint = false;
+            let mut has_mutation = false;
+
+            if let Ok(content) = std::fs::read_to_string(&pkg_json) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(scripts) = val.get("scripts").and_then(|s| s.as_object()) {
+                        has_test = scripts.contains_key("test");
+                        has_lint = scripts.contains_key("lint");
+                        has_mutation = scripts.contains_key("test:mutation")
+                            || scripts.contains_key("stryker");
+                    }
+                }
+            }
+
+            if has_test {
+                gates.push(GateDefinition {
+                    name: "node-tests".to_string(),
+                    plane: VerificationPlane::Deterministic,
+                    command: "npm test".to_string(),
+                    precommit: true,
+                    timeout_secs: 60,
+                    description: "Execute Node.js test suite".to_string(),
+                });
+            }
+
+            if has_lint {
+                gates.push(GateDefinition {
+                    name: "node-lint".to_string(),
+                    plane: VerificationPlane::Deterministic,
+                    command: "npm run lint".to_string(),
+                    precommit: true,
+                    timeout_secs: 45,
+                    description: "Execute linter checks".to_string(),
+                });
+            }
+
+            if is_ts {
+                gates.push(GateDefinition {
+                    name: "typecheck".to_string(),
+                    plane: VerificationPlane::Deterministic,
+                    command: "npx tsc --noEmit".to_string(),
+                    precommit: true,
+                    timeout_secs: 45,
+                    description: "TypeScript strict typecheck".to_string(),
+                });
+            }
+
+            if has_mutation {
+                gates.push(GateDefinition {
+                    name: "mutation-gate".to_string(),
+                    plane: VerificationPlane::Deterministic,
+                    command: "npm run test:mutation".to_string(),
+                    precommit: false,
+                    timeout_secs: 180,
+                    description: "Stryker mutation testing gate".to_string(),
+                });
+            }
+        }
+
+        // 3. Python detection
+        if repo_root.join("pyproject.toml").exists()
+            || repo_root.join("requirements.txt").exists()
+            || repo_root.join("setup.py").exists()
+        {
+            languages.push("python".to_string());
+            gates.push(GateDefinition {
+                name: "pytest".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "pytest".to_string(),
+                precommit: true,
+                timeout_secs: 60,
+                description: "Execute Python pytest suite".to_string(),
+            });
+            gates.push(GateDefinition {
+                name: "python-lint".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "ruff check .".to_string(),
+                precommit: true,
+                timeout_secs: 30,
+                description: "Python linter check via ruff".to_string(),
+            });
+        }
+
+        // 4. Go detection
+        if repo_root.join("go.mod").exists() {
+            languages.push("go".to_string());
+            gates.push(GateDefinition {
+                name: "go-test".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "go test ./...".to_string(),
+                precommit: true,
+                timeout_secs: 60,
+                description: "Execute Go test suite".to_string(),
+            });
+        }
+
+        // 5. Solidity detection
+        if repo_root.join("foundry.toml").exists() {
+            languages.push("solidity".to_string());
+            gates.push(GateDefinition {
+                name: "foundry-test".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "forge test".to_string(),
+                precommit: true,
+                timeout_secs: 60,
+                description: "Foundry smart contract tests".to_string(),
+            });
+        }
+
+        // Always include Plane 1 Skeptic gate
+        gates.push(GateDefinition {
+            name: "skeptic-review".to_string(),
+            plane: VerificationPlane::Judgment,
+            command: "vwl task review --json .vwl/ledger/tasks/*.yaml 2>/dev/null || true"
+                .to_string(),
+            precommit: true,
+            timeout_secs: 10,
+            description: "Skeptic adversarial review gate for draft tasks".to_string(),
+        });
+
+        let project_name = repo_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unnamed-project")
+            .to_string();
+
+        Self {
+            version: "1.0".to_string(),
+            project: project_name,
+            languages,
+            gates,
+        }
+    }
+
+    pub fn load_or_detect(repo_root: &Path) -> Result<Self> {
+        let gates_file = repo_root.join(".vwl").join("gates.yaml");
+        if gates_file.exists() {
+            let content = std::fs::read_to_string(gates_file)?;
+            let manifest: Self = serde_yaml::from_str(&content)
+                .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+            Ok(manifest)
+        } else {
+            Ok(Self::detect(repo_root))
+        }
+    }
+
+    pub fn save(&self, repo_root: &Path) -> Result<PathBuf> {
+        let vwl_dir = repo_root.join(".vwl");
+        std::fs::create_dir_all(&vwl_dir)?;
+        let gates_path = vwl_dir.join("gates.yaml");
+        let yaml_str =
+            serde_yaml::to_string(self).map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        std::fs::write(&gates_path, yaml_str)?;
+        Ok(gates_path)
+    }
+
+    pub fn run_gates(&self, repo_root: &Path, precommit_only: bool) -> Result<Vec<GateRunResult>> {
+        let mut results = Vec::new();
+
+        for gate in &self.gates {
+            if precommit_only && !gate.precommit {
+                continue;
+            }
+
+            let start = std::time::Instant::now();
+            let output = std::process::Command::new("sh")
+                .args(["-c", &gate.command])
+                .current_dir(repo_root)
+                .output();
+
+            let duration_ms = start.elapsed().as_millis() as u64;
+
+            match output {
+                Ok(out) => {
+                    let passed = out.status.success();
+                    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+
+                    results.push(GateRunResult {
+                        name: gate.name.clone(),
+                        plane: gate.plane,
+                        command: gate.command.clone(),
+                        passed,
+                        duration_ms,
+                        stdout,
+                        stderr,
+                    });
+                }
+                Err(e) => {
+                    results.push(GateRunResult {
+                        name: gate.name.clone(),
+                        plane: gate.plane,
+                        command: gate.command.clone(),
+                        passed: false,
+                        duration_ms,
+                        stdout: String::new(),
+                        stderr: e.to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(results)
     }
 }
