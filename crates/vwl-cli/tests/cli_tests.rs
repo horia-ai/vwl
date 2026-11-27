@@ -1369,8 +1369,14 @@ fn test_cli_bootstrap_workflow() {
     assert!(temp.path().join(".vwl/project.yaml").exists());
     assert!(temp.path().join(".vwl/identity/credential.yaml").exists());
     assert!(temp.path().join(".git/hooks/pre-commit").exists());
-    assert!(temp.path().join(".opencode/skills/repo-bootstrap-initializer/SKILL.md").exists());
-    assert!(temp.path().join(".opencode/skills/validator-wiring/SKILL.md").exists());
+    assert!(temp
+        .path()
+        .join(".opencode/skills/repo-bootstrap-initializer/SKILL.md")
+        .exists());
+    assert!(temp
+        .path()
+        .join(".opencode/skills/validator-wiring/SKILL.md")
+        .exists());
 
     // Verify git commit
     let log_out = Command::new("git")

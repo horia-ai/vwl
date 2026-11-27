@@ -791,7 +791,11 @@ fn main() -> Result<()> {
                     .current_dir(&repo_root)
                     .output();
                 let _ = std::process::Command::new("git")
-                    .args(["commit", "-m", "chore(vwl): initialize repository gates and hooks"])
+                    .args([
+                        "commit",
+                        "-m",
+                        "chore(vwl): initialize repository gates and hooks",
+                    ])
                     .current_dir(&repo_root)
                     .output();
                 println!("  Git Commit:        Committed initial .vwl configuration");
@@ -2131,7 +2135,8 @@ fn main() -> Result<()> {
                     .filter(|p| p.subject == wu.candidate || p.subject == wu.commit)
                     .collect();
 
-                let decision = DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
+                let decision =
+                    DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
                 ledger.append_decision(&decision)?;
                 println!(
                     "  Decision Engine Outcome: {:?} (reason: {})",
@@ -2665,7 +2670,10 @@ fn handle_bootstrap(
     } else {
         let m = GatesManifest::detect(repo_root);
         m.save(repo_root)?;
-        println!("\n[1/5] Discovered project language stack: {:?}", m.languages);
+        println!(
+            "\n[1/5] Discovered project language stack: {:?}",
+            m.languages
+        );
         println!(
             "      Generated static gates manifest at .vwl/gates.yaml ({} gates)",
             m.gates.len()
@@ -2715,7 +2723,10 @@ fn handle_bootstrap(
     }
 
     // Step 4: Install agent skills across harnesses
-    println!("\n[4/5] Injecting agent skills for harness '{}'...", harness);
+    println!(
+        "\n[4/5] Injecting agent skills for harness '{}'...",
+        harness
+    );
     let installed_skills = skills::install_all_skills(repo_root, harness)?;
     println!(
         "      Injected {} skill files across harness directories (.vwl, .opencode, .gemini, .claude, .github)",
@@ -2772,7 +2783,12 @@ fn handle_bootstrap(
                 .current_dir(repo_root)
                 .output();
             let commit_res = std::process::Command::new("git")
-                .args(["commit", "-m", "chore(vwl): bootstrap VWL protocol gates, identity, and agent skills", "--no-verify"])
+                .args([
+                    "commit",
+                    "-m",
+                    "chore(vwl): bootstrap VWL protocol gates, identity, and agent skills",
+                    "--no-verify",
+                ])
                 .current_dir(repo_root)
                 .output();
             if let Ok(out) = commit_res {
@@ -3100,7 +3116,8 @@ fn run_worker_daemon(
                     .filter(|p| p.subject == wu.candidate || p.subject == wu.commit)
                     .collect();
 
-                let decision = DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
+                let decision =
+                    DecisionEngine::evaluate(&wu.candidate, &candidate_proofs, &[ProofType::Work]);
                 ledger.append_decision(&decision)?;
                 println!(
                     "[Runner: Verifier Node] Deterministic Decision: {:?} ({})",
