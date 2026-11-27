@@ -265,6 +265,14 @@ impl EconomicLedger {
             serde_json::from_str(&data).map_err(|e| VwlError::SerializationError(e.to_string()))?;
         Ok(ledger)
     }
+
+    pub fn load_or_create(repo_root: &Path) -> Result<Self> {
+        Self::load_from_ledger(repo_root)
+    }
+
+    pub fn verify_conservation(&self) -> Result<()> {
+        self.check_conservation_invariant()
+    }
 }
 
 #[cfg(test)]

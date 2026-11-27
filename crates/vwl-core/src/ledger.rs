@@ -105,6 +105,65 @@ impl LocalLedger {
         Ok(tasks)
     }
 
+    pub fn get_work_units(&self) -> Result<Vec<WorkUnit>> {
+        let mut work_units = Vec::new();
+        let wu_dir = self.root_dir.join("work_units");
+        if wu_dir.exists() {
+            for entry in fs::read_dir(wu_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    work_units.push(WorkUnit::from_yaml(&content)?);
+                }
+            }
+        }
+        Ok(work_units)
+    }
+
+    pub fn get_decisions(&self) -> Result<Vec<Decision>> {
+        let mut decisions = Vec::new();
+        let dec_dir = self.root_dir.join("decisions");
+        if dec_dir.exists() {
+            for entry in fs::read_dir(dec_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    let dec: Decision = serde_yaml::from_str(&content)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    decisions.push(dec);
+                }
+            }
+        }
+        Ok(decisions)
+    }
+
+    pub fn get_decision_for_subject(&self, subject: &str) -> Result<Option<Decision>> {
+        let file_path = self.root_dir.join("decisions").join(format!("{}.yaml", subject));
+        if file_path.exists() {
+            let content = fs::read_to_string(file_path)?;
+            let dec: Decision = serde_yaml::from_str(&content)
+                .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+            Ok(Some(dec))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_all_proofs(&self) -> Result<Vec<Proof>> {
+        let mut proofs = Vec::new();
+        let proofs_dir = self.root_dir.join("proofs");
+        if proofs_dir.exists() {
+            for entry in fs::read_dir(proofs_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    proofs.push(Proof::from_yaml(&content)?);
+                }
+            }
+        }
+        Ok(proofs)
+    }
+
     pub fn get_proofs_for_subject(&self, subject: &str) -> Result<Vec<Proof>> {
         let mut proofs = Vec::new();
         let proofs_dir = self.root_dir.join("proofs");

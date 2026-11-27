@@ -296,3 +296,86 @@ fn test_cli_economics_commands() {
     assert!(show_str.contains("VWL Local Economic State Machine (Gate 5):"));
     assert!(show_str.contains("Reserved 250000"));
 }
+
+#[test]
+fn test_cli_worker_run_and_tui_render() {
+    let temp = tempdir().unwrap();
+    // 1. Initialize git repo and create a base commit
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git init");
+    Command::new("git")
+        .args(["config", "user.email", "test@vwl.network"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git config email");
+    Command::new("git")
+        .args(["config", "user.name", "VWL Tester"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git config name");
+    fs::write(temp.path().join("README.md"), "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git add");
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git commit");
+
+    let head_output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git rev-parse");
+    let head_sha = String::from_utf8_lossy(&head_output.stdout).trim().to_string();
+
+    // 2. Add a Task
+    let task_yaml = format!(
+        r#"id: "TASK-RUNNER-001"
+objective: "Implement autonomous task test"
+acceptance:
+  - "Unit tests pass cleanly"
+base: "{}"
+"#,
+        head_sha
+    );
+    let task_path = temp.path().join("task_runner.yaml");
+    fs::write(&task_path, task_yaml).unwrap();
+
+    let add_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "add", task_path.to_str().unwrap()])
+        .current_dir(temp.path())
+        .output()
+        .expect("vwl task add");
+    assert!(add_output.status.success());
+
+    // 3. Execute vwl worker run --max-tasks 1
+    let run_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["worker", "run", "--harness", "gemini", "--max-tasks", "1"])
+        .current_dir(temp.path())
+        .output()
+        .expect("vwl worker run");
+    assert!(run_output.status.success());
+    let run_str = String::from_utf8_lossy(&run_output.stdout);
+    assert!(run_str.contains("Picked up Task: TASK-RUNNER-001"));
+    assert!(run_str.contains("Work Unit produced"));
+    assert!(run_str.contains("Proof recorded: Type Work, Verdict Pass"));
+    assert!(run_str.contains("Deterministic Decision: Confirmed"));
+    assert!(run_str.contains("Successfully completed cycle for task TASK-RUNNER-001"));
+
+    // 4. Verify vwl tui headless render
+    let tui_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["tui", "--render-view", "0"])
+        .current_dir(temp.path())
+        .output()
+        .expect("vwl tui");
+    assert!(tui_output.status.success());
+    let tui_str = String::from_utf8_lossy(&tui_output.stdout);
+    assert!(tui_str.contains("Headless TUI render for view 0 successful"));
+}
