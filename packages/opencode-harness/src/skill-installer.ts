@@ -40,6 +40,14 @@ Every state transition must preserve total token balance. Nonce idempotency prev
 1 USD = 1,000 WORK (1 WORK = 0.001 USD).
 Public liquidity pools require decoupled floating pricing and formal security verification before deployment.`,
   },
+  "spec-writer-adversarial-skeptic": {
+    name: "spec-writer-adversarial-skeptic",
+    description: "Adversarial spec writer that grills user with rigorous questions to extract falsifiable task specs",
+    instructions: `# Adversarial Spec Writer & Skeptic Grilling Protocol
+1. Grill user with pointed questions on falsifiability, invariants, edge cases, error codes, and canonical base commit.
+2. Reject subjective phrases ('clean code', 'looks good') and conversational dependencies ('as discussed').
+3. Formulate immutable YAML task spec and ingest via 'vwl task add <spec.yaml> --skeptic'.`,
+  },
 };
 
 export function listAvailableSkills(): string[] {

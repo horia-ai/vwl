@@ -59,6 +59,11 @@ pub const SKILLS: &[SkillDef] = &[
         description: "Specialist validator executing read-only shadow traffic and isolated deployment smoke verification (Gate 18 & 19)",
         content: "# Validator Skill: Shadow Traffic & Smoke Contract (Gate 18 & 19)\n\n## Purpose\nValidate candidate in containerized smoke/deployment and mirrored traffic without production state mutation.\n\n## Safety Invariants\n1. Read-only execution: Mutation calls MUST be rejected or mocked.\n2. Side-effect suppression: External webhooks, emails, and database writes suppressed.\n3. Bounded execution: Enforce request limit and duration timeouts.\n4. Emit structured Proof with gate='deployment-shadow'.",
     },
+    SkillDef {
+        name: "spec-writer-adversarial-skeptic",
+        description: "Adversarial spec writer that grills user with rigorous questions to extract falsifiable task specs admitted by TaskSkeptic",
+        content: "# Adversarial Spec Writer & Skeptic Grilling Protocol (Gate 0)\n\n## 1. The Grilling Interview\nWhenever the user requests a new feature or task:\nDo NOT jump to implementation. Interrogate the user with pointed questions:\n1. Falsifiability: What exact command or test proves this task passes?\n2. Invariants: What system invariants or data constraints must NEVER break?\n3. Edge Cases: What happens on empty input, nulls, timeouts, errors, and concurrency?\n4. Error Codes: What specific errors/types must be returned on failure?\n5. Base: What is the canonical base Git commit SHA?\n\n## 2. Skeptic Invariant Rejections\nReject any requirements containing:\n- Subjective words: 'clean code', 'well tested', 'fast enough', 'looks good', 'high quality'.\n- Conversational cues: 'as discussed', 'like we agreed', 'previous chat'.\n\n## 3. Spec Ingestion\n1. Write .vwl/ledger/tasks/<task_id>.yaml:\n```yaml\nid: \"<TASK-ID>\"\nobjective: \"<Self-contained objective>\"\nacceptance:\n  - \"cargo test -p <crate> --test <test>\"\n  - \"npm test\"\nbase: \"<BASE_GIT_SHA>\"\n```\n2. Ingest via Skeptic Review Gate: `vwl task add .vwl/ledger/tasks/<task_id>.yaml --skeptic`.\n3. Add dependencies: `vwl task add-dep <FROM> <TO> --kind requires`.",
+    },
 ];
 
 pub fn list_skills() -> Vec<(&'static str, &'static str)> {
@@ -168,7 +173,7 @@ mod tests {
     #[test]
     fn test_list_skills() {
         let skills = list_skills();
-        assert_eq!(skills.len(), 10);
+        assert_eq!(skills.len(), 11);
         assert!(skills
             .iter()
             .any(|(name, _)| *name == "tdd-mutation-testing"));
@@ -189,6 +194,9 @@ mod tests {
         assert!(skills
             .iter()
             .any(|(name, _)| *name == "validator-shadow-smoke"));
+        assert!(skills
+            .iter()
+            .any(|(name, _)| *name == "spec-writer-adversarial-skeptic"));
     }
 
     #[test]
@@ -251,6 +259,6 @@ mod tests {
         assert!(custom_paths[0].ends_with(".vwl/custom-skills/dex-liquidity-rules/SKILL.md"));
 
         let all_skills = install_all_skills(temp.path(), "gemini").unwrap();
-        assert_eq!(all_skills.len(), 10);
+        assert_eq!(all_skills.len(), 11);
     }
 }

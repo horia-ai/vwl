@@ -41,6 +41,7 @@ describe("@horia-ai/vwl NPX CLI Runner", () => {
       expect(existsSync(join(tempDir, ".vwl/project.yaml"))).toBe(true);
       expect(existsSync(join(tempDir, "AGENTS.md"))).toBe(true);
       expect(existsSync(join(tempDir, ".opencode/skills/repo-bootstrap-initializer/SKILL.md"))).toBe(true);
+      expect(existsSync(join(tempDir, ".opencode/skills/spec-writer-adversarial-skeptic/SKILL.md"))).toBe(true);
     } finally {
       process.env.INIT_CWD = origInitCwd;
       rmSync(tempDir, { recursive: true, force: true });

@@ -1025,6 +1025,23 @@ fn main() -> Result<()> {
                     .current_dir(&repo_root)
                     .output();
             }
+            if let Ok(ledger) = LocalLedger::new(&repo_root) {
+                if let Ok(tasks) = ledger.get_tasks() {
+                    if let Some(task) = tasks.into_iter().find(|t| t.id == task_id) {
+                        let acceptance_bullets = task
+                            .acceptance
+                            .iter()
+                            .map(|a| format!("- {}", a))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        let task_md = format!(
+                            "# Task: {}\n\n## Objective\n{}\n\n## Canonical Base\n{}\n\n## Acceptance Criteria\n{}\n\n## Bounded Instructions\n1. Strictly adhere to TDD (Red -> Green -> Refactor).\n2. Write tests verifying acceptance criteria first.\n3. Verify all static gates pass: `vwl verify precommit`.\n",
+                            task.id, task.objective, task.base, acceptance_bullets
+                        );
+                        let _ = fs::write(worktree_dir.join("TASK.md"), task_md);
+                    }
+                }
+            }
             println!(
                 "Assigned task {} to isolated worktree at {}",
                 task_id,
@@ -1966,26 +1983,137 @@ fn main() -> Result<()> {
                 }
 
                 let worktree_dir = repo_root.join(".vwl").join("worktrees").join(&task.id);
-                fs::create_dir_all(&worktree_dir)?;
+                if !worktree_dir.exists() {
+                    fs::create_dir_all(&worktree_dir)?;
+                    let _ = std::process::Command::new("git")
+                        .args([
+                            "worktree",
+                            "add",
+                            "-B",
+                            &format!("task/{}", task.id),
+                            worktree_dir.to_str().unwrap(),
+                            &task.base,
+                        ])
+                        .current_dir(&repo_root)
+                        .output();
+                }
                 println!("  Isolated Worktree: {}", worktree_dir.display());
 
-                let candidate_commit = format!(
-                    "cand_{}_{}",
-                    task.id.to_lowercase().replace('-', "_"),
-                    task.base.chars().take(8).collect::<String>()
+                // Write bounded TASK.md in isolated worktree
+                let acceptance_bullets = task
+                    .acceptance
+                    .iter()
+                    .map(|a| format!("- {}", a))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let task_md = format!(
+                    "# Task: {}\n\n## Objective\n{}\n\n## Canonical Base\n{}\n\n## Acceptance Criteria\n{}\n\n## Bounded Instructions\n1. Strictly adhere to TDD (Red -> Green -> Refactor).\n2. Write tests verifying acceptance criteria first.\n3. Verify all static gates pass: `vwl verify precommit`.\n",
+                    task.id, task.objective, task.base, acceptance_bullets
                 );
-                let commits = vec![
-                    CommitEntry {
-                        sha: format!("test_{}", candidate_commit),
-                        role: "unit-test".to_string(),
-                        actor: harness.to_string(),
-                    },
-                    CommitEntry {
-                        sha: candidate_commit.clone(),
-                        role: "implementation".to_string(),
-                        actor: harness.to_string(),
-                    },
-                ];
+                let _ = fs::write(worktree_dir.join("TASK.md"), task_md);
+
+                // Execute agent if specified or available
+                if !extra_args.is_empty() {
+                    println!("  Executing agent command in worktree: {:?}", extra_args);
+                    let status = std::process::Command::new(&extra_args[0])
+                        .args(&extra_args[1..])
+                        .current_dir(&worktree_dir)
+                        .status();
+                    match status {
+                        Ok(s) => println!("  Agent process exited with status: {}", s),
+                        Err(e) => eprintln!("  Warning: Failed to execute agent command: {}", e),
+                    }
+                } else if harness == "opencode" {
+                    let check_opencode =
+                        std::process::Command::new("which").arg("opencode").output();
+                    if let Ok(out) = check_opencode {
+                        if out.status.success() {
+                            println!(
+                                "  Detected opencode binary; launching bounded developer run..."
+                            );
+                            let status = std::process::Command::new("opencode")
+                                .args([
+                                    "run",
+                                    "--prompt",
+                                    "Implement the requirements in TASK.md following strict TDD. Verify with vwl verify precommit.",
+                                ])
+                                .current_dir(&worktree_dir)
+                                .status();
+                            if let Ok(s) = status {
+                                println!("  opencode exited with status: {}", s);
+                            }
+                        }
+                    }
+                }
+
+                // Inspect real git commits in worktree
+                let head_output = std::process::Command::new("git")
+                    .args(["rev-parse", "HEAD"])
+                    .current_dir(&worktree_dir)
+                    .output();
+
+                let candidate_commit = if let Ok(out) = head_output {
+                    let rev = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !rev.is_empty() && rev != task.base {
+                        rev
+                    } else {
+                        format!(
+                            "cand_{}_{}",
+                            task.id.to_lowercase().replace('-', "_"),
+                            task.base.chars().take(8).collect::<String>()
+                        )
+                    }
+                } else {
+                    format!(
+                        "cand_{}_{}",
+                        task.id.to_lowercase().replace('-', "_"),
+                        task.base.chars().take(8).collect::<String>()
+                    )
+                };
+
+                let mut commits = Vec::new();
+                let log_output = std::process::Command::new("git")
+                    .args(["log", "--format=%H", &format!("{}..HEAD", task.base)])
+                    .current_dir(&worktree_dir)
+                    .output();
+
+                if let Ok(out) = log_output {
+                    let shas: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                        .lines()
+                        .map(|l| l.trim().to_string())
+                        .filter(|l| !l.is_empty())
+                        .collect();
+                    if !shas.is_empty() {
+                        for (idx, sha) in shas.into_iter().rev().enumerate() {
+                            let role = if idx == 0 {
+                                "unit-test"
+                            } else {
+                                "implementation"
+                            };
+                            commits.push(CommitEntry {
+                                sha,
+                                role: role.to_string(),
+                                actor: harness.to_string(),
+                            });
+                        }
+                    }
+                }
+
+                if commits.is_empty() {
+                    commits = vec![
+                        CommitEntry {
+                            sha: format!("test_{}", candidate_commit),
+                            role: "unit-test".to_string(),
+                            actor: harness.to_string(),
+                        },
+                        CommitEntry {
+                            sha: candidate_commit.clone(),
+                            role: "implementation".to_string(),
+                            actor: harness.to_string(),
+                        },
+                    ];
+                }
+
                 let wu = WorkUnit::new_sequence(
                     &task.id,
                     &task.base,
@@ -2760,23 +2888,52 @@ fn handle_bootstrap(
     if !agents_md.exists() {
         let agents_doc = r#"# Agent Instructions: Virtual Work Ledger (VWL) Protocol
 
-This repository is governed by the Virtual Work Ledger (VWL) decentralized evidence protocol.
+This repository is governed by the Virtual Work Ledger (VWL) decentralized labor and evidence protocol.
+All autonomous agents (OpenCode, Claude, Antigravity, Copilot) operating in this repository must strictly adhere to this protocol.
 
 ## Step 0: Initial Repository Setup & Gate Verification
-Whenever an agent session starts or resumes work in this repository:
-1. Verify VWL is initialized:
+Whenever an autonomous agent starts or resumes work in this repository:
+1. Verify VWL Readiness:
    - Check that `.vwl/gates.yaml` exists.
    - Check that `.git/hooks/pre-commit` is installed and executable.
-2. If VWL is not initialized or gates are unverified:
+2. If VWL is Uninitialized or Gates are Missing:
    - Run `npx @horia-ai/vwl bootstrap` (or `vwl bootstrap --commit`).
    - Run `npx @horia-ai/vwl verify precommit` to confirm all static validator gates pass on the clean base.
-   - Commit the baseline configuration before starting any task code.
-3. Task Execution Protocol:
-   - Inspect the current Work Frontier: `vwl frontier` (or `npx @horia-ai/vwl status`).
-   - Claim your assigned task: `vwl claim <task-id>`.
-   - Work in an isolated Git worktree (`vwl work <task-id>`).
-   - Enforce strict TDD and pass all static pre-commit gates.
-   - Submit candidate diff and proofs via `vwl submit`.
+   - Commit the baseline bootstrap configuration before starting any task code.
+
+## Phase 1: Interactive Spec Writing & Adversarial Grilling
+Whenever the user asks you to design, plan, or implement a new feature or task:
+Do NOT jump straight to code or create vague tasks. Adopt the Adversarial Spec Skeptic persona:
+1. Grill the User with Rigorous Questions:
+   - Falsifiability: What exact CLI command or automated test assertion proves this task is done?
+   - Invariants: What system invariants or data constraints must NEVER be broken?
+   - Edge Cases & Failure Modes: What happens on empty/null input, network timeout, error states, and concurrency?
+   - Error Semantics: What exact error codes or types should be returned?
+   - Base Commit: What is the canonical base Git commit SHA (use HEAD)?
+2. Reject Vague or Conversational Requirements:
+   - Reject subjective criteria: 'clean code', 'looks good', 'fast enough', 'well tested', 'high quality'.
+   - Reject conversational dependencies: 'as discussed', 'like we agreed', 'in our chat'.
+3. Generate & Ingest Immutable Task Specification:
+   Write the specification to `.vwl/ledger/tasks/<task-id>.yaml` and validate:
+   `vwl task add .vwl/ledger/tasks/<task-id>.yaml --skeptic`
+   Link dependencies: `vwl task add-dep <parent-task> <task-id> --kind requires`
+
+## Phase 2: Task Execution & Worktree Isolation
+When implementing an admitted task:
+1. Inspect Frontier: Check ready tasks: `vwl frontier` (or `npx @horia-ai/vwl status`).
+2. Claim Task: Claim your assigned task: `vwl claim <task-id>`.
+3. Isolated Worktree: Create and enter isolated worktree: `vwl work <task-id>`.
+4. Strict TDD & Mutation Rigor:
+   - Red: Write failing test first.
+   - Green: Write minimal implementation to pass.
+   - Refactor: Clean types and formatting.
+   - Mutation Testing: Ensure mutation score >= 80%.
+5. Validator Verification: Pass all pre-commit validator gates: `vwl verify precommit`.
+6. Git Commit & Submission: Commit changes and submit candidate diff:
+   `vwl submit <task-id> --candidate <head-sha>`
+
+## Phase 3: Independent Verification
+The Verifier runs in a fresh context with Zero Implementer Chat (0 conversational tokens), executes `.vwl/gates.yaml`, and appends an immutable Proof and Decision to the ledger.
 "#;
         let _ = fs::write(&agents_md, agents_doc);
     }
@@ -3247,34 +3404,128 @@ fn run_worker_daemon(
 
             // Step 1: Create isolated worktree directory
             let worktree_dir = repo_root.join(".vwl").join("worktrees").join(&task.id);
-            fs::create_dir_all(&worktree_dir)?;
+            if !worktree_dir.exists() {
+                fs::create_dir_all(&worktree_dir)?;
+                let _ = std::process::Command::new("git")
+                    .args([
+                        "worktree",
+                        "add",
+                        "-B",
+                        &format!("task/{}", task.id),
+                        worktree_dir.to_str().unwrap(),
+                        &task.base,
+                    ])
+                    .current_dir(repo_root)
+                    .output();
+            }
             println!(
                 "[Runner] Isolated worktree initialized at {}",
                 worktree_dir.display()
             );
+
+            // Write bounded TASK.md in isolated worktree
+            let acceptance_bullets = task
+                .acceptance
+                .iter()
+                .map(|a| format!("- {}", a))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let task_md = format!(
+                "# Task: {}\n\n## Objective\n{}\n\n## Canonical Base\n{}\n\n## Acceptance Criteria\n{}\n\n## Bounded Instructions\n1. Strictly adhere to TDD (Red -> Green -> Refactor).\n2. Write tests verifying acceptance criteria first.\n3. Verify all static gates pass: `vwl verify precommit`.\n",
+                task.id, task.objective, task.base, acceptance_bullets
+            );
+            let _ = fs::write(worktree_dir.join("TASK.md"), task_md);
 
             // Step 2: Developer Phase (Bounded context)
             println!(
                 "[Runner] Executing developer worker under harness '{}'...",
                 harness
             );
-            let candidate_commit = format!(
-                "cand_{}_{}",
-                task.id.to_lowercase().replace('-', "_"),
-                task.base.chars().take(8).collect::<String>()
-            );
-            let commits = vec![
-                CommitEntry {
-                    sha: format!("test_{}", candidate_commit),
-                    role: "unit-test".to_string(),
-                    actor: harness.to_string(),
-                },
-                CommitEntry {
-                    sha: candidate_commit.clone(),
-                    role: "implementation".to_string(),
-                    actor: harness.to_string(),
-                },
-            ];
+
+            if harness == "opencode" {
+                let check_opencode = std::process::Command::new("which").arg("opencode").output();
+                if let Ok(out) = check_opencode {
+                    if out.status.success() {
+                        let _ = std::process::Command::new("opencode")
+                            .args([
+                                "run",
+                                "--prompt",
+                                "Implement the requirements in TASK.md following strict TDD. Verify with vwl verify precommit.",
+                            ])
+                            .current_dir(&worktree_dir)
+                            .status();
+                    }
+                }
+            }
+
+            // Inspect real git commits in worktree
+            let head_output = std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&worktree_dir)
+                .output();
+
+            let candidate_commit = if let Ok(out) = head_output {
+                let rev = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !rev.is_empty() && rev != task.base {
+                    rev
+                } else {
+                    format!(
+                        "cand_{}_{}",
+                        task.id.to_lowercase().replace('-', "_"),
+                        task.base.chars().take(8).collect::<String>()
+                    )
+                }
+            } else {
+                format!(
+                    "cand_{}_{}",
+                    task.id.to_lowercase().replace('-', "_"),
+                    task.base.chars().take(8).collect::<String>()
+                )
+            };
+
+            let mut commits = Vec::new();
+            let log_output = std::process::Command::new("git")
+                .args(["log", "--format=%H", &format!("{}..HEAD", task.base)])
+                .current_dir(&worktree_dir)
+                .output();
+
+            if let Ok(out) = log_output {
+                let shas: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|l| !l.is_empty())
+                    .collect();
+                if !shas.is_empty() {
+                    for (idx, sha) in shas.into_iter().rev().enumerate() {
+                        let role = if idx == 0 {
+                            "unit-test"
+                        } else {
+                            "implementation"
+                        };
+                        commits.push(CommitEntry {
+                            sha,
+                            role: role.to_string(),
+                            actor: harness.to_string(),
+                        });
+                    }
+                }
+            }
+
+            if commits.is_empty() {
+                commits = vec![
+                    CommitEntry {
+                        sha: format!("test_{}", candidate_commit),
+                        role: "unit-test".to_string(),
+                        actor: harness.to_string(),
+                    },
+                    CommitEntry {
+                        sha: candidate_commit.clone(),
+                        role: "implementation".to_string(),
+                        actor: harness.to_string(),
+                    },
+                ];
+            }
+
             let wu = WorkUnit::new_sequence(
                 &task.id,
                 &task.base,
