@@ -649,3 +649,65 @@ base: "{}"
         .unwrap();
     assert!(release_out.status.success());
 }
+
+#[test]
+fn test_cli_verify_plan_and_run() {
+    let temp = tempfile::tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git init");
+    Command::new("git")
+        .args(["config", "user.email", "tester@vwl.network"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git config email");
+    Command::new("git")
+        .args(["config", "user.name", "VWL Tester"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git config name");
+    fs::write(temp.path().join("README.md"), "# Verify Test\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(temp.path())
+        .output()
+        .expect("git add");
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git commit");
+
+    // Test vwl verify plan
+    let plan_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["verify", "plan", "cand_candidate_001"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(plan_out.status.success());
+    let plan_str = String::from_utf8_lossy(&plan_out.stdout);
+    assert!(plan_str.contains("VWL Verification Plan for Subject: cand_candidate_001"));
+    assert!(plan_str.contains("[REQUIRED] compile"));
+    assert!(plan_str.contains("[REQUIRED] unit"));
+    assert!(plan_str.contains("[REQUIRED] wiring"));
+    assert!(plan_str.contains("[REQUIRED] test-integrity"));
+
+    // Test vwl verify run
+    let run_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "verify",
+            "run",
+            "cand_candidate_001",
+            "--verifier",
+            "gemini",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(run_out.status.success());
+    let run_str = String::from_utf8_lossy(&run_out.stdout);
+    assert!(run_str.contains("Executing Verification Factory on WorkUnit 'cand_candidate_001'"));
+    assert!(run_str.contains("Verification Decision: Confirmed"));
+}

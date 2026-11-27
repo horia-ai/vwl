@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod decision;
 pub mod economics;
 pub mod error;
+pub mod factory;
 pub mod git;
 pub mod github;
 pub mod graph;
@@ -23,6 +24,10 @@ pub use economics::{
     EconomicLedger, Engagement, EngagementParams, NodeAccount, ProjectAccount, WORK_PER_USD,
 };
 pub use error::{Result, VwlError};
+pub use factory::{
+    Challenge, ChangeProfile, RiskLevel, RiskProfile, ShadowTrafficContract, TestIntegrityGate,
+    VerificationPlan, VerifierArtifact, WiringGate,
+};
 pub use git::{GitInspector, GitRepoInfo};
 pub use github::{
     resolve_github_token, GithubClient, GithubComment, GithubIssue, GithubSyncSummary, GithubUser,
