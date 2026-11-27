@@ -28,21 +28,44 @@ NODE_AUTH_TOKEN="$ATRIFAN_NPM_TOKEN" npm publish --access public
 
 ---
 
-## 2. Automated Publishing via GitHub Actions
+## 2. Automated Publishing via GitHub Actions & Enterprise OIDC (Option B)
 
 The package publishing pipeline is automated in [`.github/workflows/publish-package.yml`](../.github/workflows/publish-package.yml).
 
+### Why Option B (Enterprise Grade) is Recommended
+
+| Feature | Option A: Classic Token | Option B: OIDC Trusted Publishing (Enterprise) |
+|---|---|---|
+| **Secret Management** | Long-lived static secret `NPM_TOKEN` (leak/rotation risk) | **Zero Secrets** (ephemeral short-lived GitHub OIDC tokens) |
+| **Supply Chain Security** | No cryptographic build origin proof | **SLSA Provenance via Sigstore** (tamper-proof proof of commit & repo) |
+| **Auditability** | Package uploaded from arbitrary runner with token | Cryptographically verified public ledger linking npm tarball to GitHub SHA |
+| **Compliance** | Vulnerable to credential interception | Enterprise SOC2/ISO-27001 supply chain compliance |
+
+### Configuring Option B (OIDC Trusted Publishing) on npmjs.com
+
+1. Navigate to **[npmjs.com](https://www.npmjs.com)** -> Package **`@horia-ai/vwl`** (or create organization `@horia-ai`).
+2. Go to **Settings** -> **Publishing Access** -> **Trusted Publishers**.
+3. Click **Add Publisher** -> Select **GitHub Actions**:
+   * **GitHub organization/user**: `horia-ai`
+   * **Repository name**: `vwl`
+   * **Workflow filename**: `publish-package.yml`
+   * **Environment**: *(leave blank or specify production)*
+4. Save. Once configured, GitHub Actions can publish with `--provenance` even without any static `NPM_TOKEN`!
+
 ### Triggering a Release
-Publishing is triggered automatically upon:
-1. **Pushing a Git Release Tag:**
+
+1. **Dry-Run Validation (Validate build, sccache, and tests without publishing):**
+   ```bash
+   env GH_TOKEN="$ATRIFAN_GITHUB_PAT_TOKEN" gh workflow run publish-package.yml -f dry_run=true
+   ```
+2. **Pushing a Git Release Tag:**
    ```bash
    git tag v0.1.1
    git push origin v0.1.1
    ```
-2. **Publishing a GitHub Release:**
-   Creating and publishing a Release from the GitHub UI triggers the build and publish workflow.
-3. **Manual Workflow Dispatch:**
-   You can manually dispatch the workflow via GitHub CLI:
+3. **Publishing a GitHub Release:**
+   Creating and publishing a Release from GitHub UI triggers the production build and publish workflow.
+4. **Manual Workflow Dispatch:**
    ```bash
    env GH_TOKEN="$ATRIFAN_GITHUB_PAT_TOKEN" gh workflow run publish-package.yml
    ```
@@ -89,22 +112,33 @@ To ensure rapid build times without incurring third-party cloud storage fees (AW
 
 ---
 
-## 4. End-User Installation & NPX Execution
+## 4. End-User Installation & NPX Execution (Option B: Enterprise Grade)
 
-Once published to `npmjs.com`, any developer or agent can run:
+### What Makes Option B "Enterprise Grade"?
+1. **Zero Prerequisites**: Works out of the box on machines without Rust, Cargo, or system toolchains installed.
+2. **Autonomous Stack Detection**: Identifies whether the target repository is TypeScript/JavaScript, Rust, Python, Go, or mixed, and configures matching deterministic static validator gates in `.vwl/gates.yaml`.
+3. **Automated Baseline Verification**: Runs each generated gate immediately to ensure green state before any configuration is committed.
+4. **Deterministic Pre-Commit Hook**: Installs `.git/hooks/pre-commit` to prevent unvalidated agent or human commits from entering the Git tree.
+5. **Universal Agent Harness Injection**: Automatically injects verifier skills into `.vwl/skills`, `.opencode/skills`, `.claude/skills`, `.gemini/skills`, and `.github/skills`.
+6. **Cryptographic Identity Provisioning**: Generates decentralized Ed25519 node keypair in `.vwl/credentials/node_key.json` for task claiming and proof signing.
+
+### Commands
 
 ```bash
-# Instant zero-dependency bootstrap in any repository
+# Instant zero-dependency enterprise bootstrap in any repository
 npx @horia-ai/vwl bootstrap
 
-# Inspect VWL status
+# Auto-stage and commit initial bootstrap baseline
+npx @horia-ai/vwl bootstrap --commit
+
+# Inspect VWL status and local ledger state
 npx @horia-ai/vwl status
 
 # Run pre-commit validator gates
 npx @horia-ai/vwl verify precommit
 ```
 
-And for high-throughput cryptographic and economic operations, native installation:
+And for high-throughput cryptographic replay and economic settlement loops:
 ```bash
 cargo install --git https://github.com/horia-ai/vwl.git vwl-cli
 # or once on crates.io:

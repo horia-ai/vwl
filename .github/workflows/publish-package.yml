@@ -7,6 +7,12 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (build and test without publishing)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -60,7 +66,8 @@ jobs:
           cargo test --all
 
       - name: Publish @horia-ai/vwl to npmjs.com
+        if: ${{ !inputs.dry_run }}
         working-directory: packages/vwl
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
