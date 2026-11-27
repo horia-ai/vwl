@@ -64,6 +64,12 @@ fn test_cli_skill_list_command() {
     assert!(stdout.contains("bounded-verifier"));
     assert!(stdout.contains("economic-conservation"));
     assert!(stdout.contains("dex-liquidity-rules"));
+    assert!(stdout.contains("repo-bootstrap-initializer"));
+    assert!(stdout.contains("validator-wiring"));
+    assert!(stdout.contains("validator-test-integrity"));
+    assert!(stdout.contains("validator-targeted-mutation"));
+    assert!(stdout.contains("validator-adversarial-skeptic"));
+    assert!(stdout.contains("validator-shadow-smoke"));
 }
 
 #[test]
@@ -1135,6 +1141,25 @@ base: "{}"
     assert!(val_str.contains("Candidate Isolation"));
     assert!(val_str.contains("Structured Proof emitted"));
     assert!(val_str.contains("Decision Engine Outcome"));
+
+    // 3b. Specialist Validator Node: Wiring Proof
+    let val_wiring = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "worker",
+            "verifier",
+            &prefix,
+            "--harness",
+            "gemini",
+            "--specialist",
+            "wiring",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(val_wiring.status.success());
+    let val_wiring_str = String::from_utf8_lossy(&val_wiring.stdout);
+    assert!(val_wiring_str.contains("specialist='wiring'"));
+    assert!(val_wiring_str.contains("gate='wiring'"));
 
     // 4. Role-based Autonomous Runner (Role Developer then Role Verifier)
     let task_3_yaml = format!(
