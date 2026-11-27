@@ -46,15 +46,4 @@ describe("@horia-ai/vwl NPX CLI Runner", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
-
-  it("executes runNodeFallback supervisor list and run cleanly", () => {
-    expect(runNodeFallback(["supervisor", "list"])).toBe(0);
-    expect(runNodeFallback(["supervisor", "run", "wave_planner"])).toBe(0);
-    expect(runNodeFallback(["supervisor", "run", "dispatcher"])).toBe(0);
-  });
-
-  it("executes vwl supervisor list via native CLI runner", () => {
-    const status = runCli(["supervisor", "list"]);
-    expect(status).toBe(0);
-  });
 });

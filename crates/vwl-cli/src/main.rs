@@ -21,7 +21,6 @@ use vwl_core::{
     replay::ReplayEngine,
     repometer::{ImpactGraph, Outcome, OutcomeSeverity, OutcomeType, RepometerEngine},
     skills,
-    supervisor::{Dispatcher, SupervisorRole, Triage, WavePlan},
     task::{Task, TaskSkeptic},
     verify_signature,
     work_unit::{CommitEntry, WorkUnit},
@@ -273,28 +272,6 @@ enum Commands {
     Sla {
         #[command(subcommand)]
         cmd: SlaCommands,
-    },
-
-    /// Board supervisors and dispatcher runtime (SUP-001)
-    Supervisor {
-        #[command(subcommand)]
-        cmd: SupervisorCommands,
-    },
-}
-
-#[derive(Subcommand)]
-enum SupervisorCommands {
-    /// List all registered board supervisors and their operational status
-    List {
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run an evaluation pass of a supervisor role (wave_planner, dispatcher, triage, validator, ingest, self_healer, all)
-    Run {
-        #[arg(default_value = "all")]
-        role: String,
-        #[arg(long)]
-        json: bool,
     },
 }
 
@@ -1960,154 +1937,6 @@ fn main() -> Result<()> {
                     println!(
                         "  Note: Service SLA is a telemetry service metric, strictly decoupled from Node REP."
                     );
-                }
-            }
-        },
-
-        Commands::Supervisor { cmd } => match cmd {
-            SupervisorCommands::List { json } => {
-                let roles = SupervisorRole::all();
-                if json {
-                    let list: Vec<_> = roles
-                        .iter()
-                        .map(|r| {
-                            serde_json::json!({
-                                "role": r.as_str(),
-                                "description": r.description(),
-                                "status": "active"
-                            })
-                        })
-                        .collect();
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&list)
-                            .map_err(|e| VwlError::SerializationError(e.to_string()))?
-                    );
-                } else {
-                    println!("=== VWL BOARD SUPERVISORS ===");
-                    for r in roles {
-                        println!("  * {:<15} {}", r.as_str(), r.description());
-                    }
-                }
-            }
-            SupervisorCommands::Run { role, json } => {
-                let repo_root = GitInspector::find_repo_root(&current_dir)?;
-                let ledger = LocalLedger::new(&repo_root)?;
-                let graph = ledger.get_task_graph()?;
-                let decisions = ledger.get_decisions()?;
-                let wus = ledger.get_work_units()?;
-                let mut confirmed = HashSet::new();
-                for wu in wus {
-                    if decisions.iter().any(|d| {
-                        (d.subject == wu.commit || d.subject == wu.candidate)
-                            && d.outcome == DecisionOutcome::Confirmed
-                    }) {
-                        confirmed.insert(wu.task);
-                    }
-                }
-                let current_time = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-
-                let role_lower = role.to_lowercase();
-                let run_all = role_lower == "all";
-
-                if json {
-                    let mut output = serde_json::Map::new();
-                    if run_all || role_lower == "wave_planner" {
-                        let plan = WavePlan::compute(&graph, &confirmed);
-                        output.insert(
-                            "wave_planner".to_string(),
-                            serde_json::to_value(&plan)
-                                .map_err(|e| VwlError::SerializationError(e.to_string()))?,
-                        );
-                    }
-                    if run_all || role_lower == "dispatcher" {
-                        let report = Dispatcher::evaluate(&graph, &confirmed, current_time);
-                        output.insert(
-                            "dispatcher".to_string(),
-                            serde_json::to_value(&report)
-                                .map_err(|e| VwlError::SerializationError(e.to_string()))?,
-                        );
-                    }
-                    if run_all || role_lower == "triage" {
-                        let triage = Triage::evaluate(&graph, &confirmed, current_time);
-                        output.insert(
-                            "triage".to_string(),
-                            serde_json::to_value(&triage)
-                                .map_err(|e| VwlError::SerializationError(e.to_string()))?,
-                        );
-                    }
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&output)
-                            .map_err(|e| VwlError::SerializationError(e.to_string()))?
-                    );
-                } else {
-                    println!("=== VWL SUPERVISOR EVALUATION RUN: {} ===", role);
-                    if run_all || role_lower == "wave_planner" {
-                        let plan = WavePlan::compute(&graph, &confirmed);
-                        println!("\n[Supervisor: Wave Planner]");
-                        println!("  Total Topological Waves: {}", plan.waves.len());
-                        for (i, wave) in plan.waves.iter().enumerate() {
-                            println!("    Wave {}: {:?}", i, wave);
-                        }
-                        if !plan.blocked_tasks.is_empty() {
-                            println!("  Blocked Tasks ({}):", plan.blocked_tasks.len());
-                            for (t, reasons) in &plan.blocked_tasks {
-                                println!("    * {}: {}", t, reasons.join("; "));
-                            }
-                        }
-                    }
-
-                    if run_all || role_lower == "dispatcher" {
-                        let report = Dispatcher::evaluate(&graph, &confirmed, current_time);
-                        println!("\n[Supervisor: Dispatcher]");
-                        println!("  Ready Tasks on Frontier: {}", report.ready_tasks_count);
-                        println!("  Active Task Claims:      {}", report.active_claims_count);
-                        if report.dispatches.is_empty() {
-                            println!("  Candidate Dispatches:    None (all ready tasks claimed or confirmed)");
-                        } else {
-                            println!("  Candidate Dispatches ({}):", report.dispatches.len());
-                            for d in &report.dispatches {
-                                println!(
-                                    "    * [{}] '{}' -> Command: '{}'",
-                                    d.task_id, d.title, d.recommended_command
-                                );
-                            }
-                        }
-                    }
-
-                    if run_all || role_lower == "triage" {
-                        let triage = Triage::evaluate(&graph, &confirmed, current_time);
-                        println!("\n[Supervisor: Triage]");
-                        println!("  Expired Claims: {}", triage.expired_claims.len());
-                        for c in &triage.expired_claims {
-                            println!("    * Stale claim on: {}", c);
-                        }
-                        if !triage.findings.is_empty() {
-                            println!("  Triage Findings ({}):", triage.findings.len());
-                            for f in &triage.findings {
-                                println!("    * [{}] {:?}: {}", f.task_id, f.kind, f.detail);
-                            }
-                        }
-                    }
-
-                    if role_lower == "validator" {
-                        println!("\n[Supervisor: Validator]");
-                        println!("  Deterministic Plane: Run 'vwl verify precommit' or 'vwl verify candidate'");
-                    }
-
-                    if role_lower == "ingest" {
-                        println!("\n[Supervisor: Ingest]");
-                        println!("  Ingest Plane: Run 'vwl task ingest <spec.yaml>' to intake new work into the graph");
-                    }
-
-                    if role_lower == "self_healer" {
-                        println!("\n[Supervisor: Self Healer]");
-                        println!("  Incident Plane: Run 'vwl incident list' to inspect containment and repair barriers");
-                    }
                 }
             }
         },

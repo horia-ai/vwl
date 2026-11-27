@@ -14,7 +14,6 @@ pub mod proof;
 pub mod replay;
 pub mod repometer;
 pub mod skills;
-pub mod supervisor;
 pub mod task;
 pub mod work_unit;
 
@@ -55,9 +54,5 @@ pub use repometer::{
     OutcomeSeverity, OutcomeType, RepometerEngine, RepometerMetrics,
 };
 pub use skills::{install_skill, list_skills, SkillDef, SKILLS};
-pub use supervisor::{
-    DispatchAction, DispatchReport, Dispatcher, SupervisorRole, Triage, TriageFinding, TriageKind,
-    TriageReport, WavePlan,
-};
 pub use task::{SkepticReviewVerdict, Task, TaskSkeptic};
 pub use work_unit::{CommitEntry, WorkUnit};
