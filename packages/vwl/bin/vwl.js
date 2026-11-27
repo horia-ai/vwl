@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, chmodSync, statSync } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,20 +14,28 @@ export function findVwlBinary() {
     return whichResult.stdout.trim();
   }
 
-  // 2. Check workspace target/release or target/debug
+  // 2. Check workspace target/release or target/debug, preferring the newest
   const workspaceRoot = resolve(__dirname, "../../..");
   const candidatePaths = [
     resolve(workspaceRoot, "target/release/vwl"),
     resolve(workspaceRoot, "target/debug/vwl"),
   ];
 
+  let newestPath = null;
+  let newestMtime = 0;
   for (const path of candidatePaths) {
     if (existsSync(path)) {
-      return path;
+      try {
+        const stat = statSync(path);
+        if (stat.mtimeMs > newestMtime) {
+          newestMtime = stat.mtimeMs;
+          newestPath = path;
+        }
+      } catch {}
     }
   }
 
-  return null;
+  return newestPath;
 }
 
 export function runNodeFallback(args, customCwd = null) {
@@ -43,6 +51,7 @@ Commands:
   init        Initialize .vwl/gates.yaml and git pre-commit hook
   verify      Execute validator gates (e.g. 'verify precommit')
   status      Print repository and ledger status
+  supervisor  Board supervisors & dispatcher runtime (list, run)
 
 To access the full suite of cryptographic ledger, economic settlement, and autonomous agent loops,
 install the native 'vwl' binary or compile via Cargo: cargo install --path crates/vwl-cli`);
@@ -56,6 +65,26 @@ install the native 'vwl' binary or compile via Cargo: cargo install --path crate
     console.log(`  Repository Root: ${cwd}`);
     console.log(`  HEAD SHA:        ${head}`);
     return 0;
+  }
+
+  if (cmd === "supervisor") {
+    const sub = args[1] || "list";
+    if (sub === "list") {
+      console.log("=== VWL BOARD SUPERVISORS [Node Fallback] ===");
+      console.log("  * wave_planner    Computes topological dependency waves and work readiness");
+      console.log("  * dispatcher      Monitors ready tasks and launches worker worktrees");
+      console.log("  * triage          Audits expired claims, deadlocks, and stalled tasks");
+      console.log("  * validator       Evaluates candidate diffs and verification suites");
+      console.log("  * ingest          Ingests specifications and generates task definitions");
+      console.log("  * self_healer     Analyzes incidents and issues containment and repair tasks");
+      return 0;
+    }
+    if (sub === "run") {
+      const role = args[2] || "all";
+      console.log(`=== VWL SUPERVISOR EVALUATION RUN [Node Fallback]: ${role} ===`);
+      console.log("  (For complete cryptographic ledger execution, install native 'vwl': cargo install --path crates/vwl-cli)");
+      return 0;
+    }
   }
 
   if (cmd === "postinstall") {
