@@ -18,6 +18,7 @@ fn test_cli_help_flag() {
     assert!(stdout.contains("worker"));
     assert!(stdout.contains("skill"));
     assert!(stdout.contains("node"));
+    assert!(stdout.contains("market"));
 }
 
 #[test]
@@ -170,4 +171,67 @@ fn test_cli_node_identity_lifecycle() {
     assert!(verify_output.status.success());
     let verify_str = String::from_utf8_lossy(&verify_output.stdout);
     assert!(verify_str.contains("Signature VALID"));
+}
+
+#[test]
+fn test_cli_market_commands() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to init git");
+
+    // Write .vwl/project.yaml
+    let vwl_dir = temp.path().join(".vwl");
+    fs::create_dir_all(&vwl_dir).unwrap();
+    let manifest_yaml = r#"
+name: "test-project"
+repository: "https://github.com/horia-ai/test-project"
+description: "Test Decentralized Project"
+topics: ["vwl-project"]
+roles:
+  - id: "ROLE-BACKEND"
+    title: "Rust Backend Engineer"
+    skills: ["tdd-mutation-testing"]
+    budget_work: 200000
+    status: "Open"
+"#;
+    fs::write(vwl_dir.join("project.yaml"), manifest_yaml).unwrap();
+
+    // 1. vwl market list
+    let list_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["market", "list"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute market list");
+    assert!(list_output.status.success());
+    let list_str = String::from_utf8_lossy(&list_output.stdout);
+    assert!(list_str.contains("VWL Project Discovery (Gate 2):"));
+    assert!(list_str.contains("ROLE-BACKEND"));
+
+    // 2. Initialize node identity
+    Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "node",
+            "init",
+            "--role",
+            "developer",
+            "--name",
+            "Gemini Node",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to init node");
+
+    // 3. vwl market offer
+    let offer_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["market", "offer", "ROLE-BACKEND", "--budget", "190000"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute market offer");
+    assert!(offer_output.status.success());
+    let offer_str = String::from_utf8_lossy(&offer_output.stdout);
+    assert!(offer_str.contains("Successfully Submitted Cryptographic Offer (Gate 2):"));
+    assert!(offer_str.contains("Ask Budget:   190000 WORK"));
 }

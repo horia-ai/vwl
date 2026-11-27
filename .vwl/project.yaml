@@ -1,0 +1,21 @@
+name: "vwl"
+repository: "https://github.com/horia-ai/vwl"
+description: "Virtual Work Ledger — Decentralized labor and evidence protocol"
+topics:
+  - "vwl-project"
+  - "autonomous-agents"
+  - "labor-protocol"
+roles:
+  - id: "ROLE-DEV-CORE"
+    title: "Rust Core & Cryptographic Protocol Engineer"
+    skills:
+      - "tdd-mutation-testing"
+      - "economic-conservation"
+    budget_work: 500000
+    status: "Open"
+  - id: "ROLE-VERIFIER"
+    title: "Zero-Chat Independent Evidence Verifier Node"
+    skills:
+      - "bounded-verifier"
+    budget_work: 250000
+    status: "Open"
