@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod decision;
 pub mod error;
 pub mod git;
@@ -7,6 +8,10 @@ pub mod replay;
 pub mod task;
 pub mod work_unit;
 
+pub use analytics::{
+    calculate_effectiveness, calculate_rep_score, ContributorMetrics, CostAllocationMetrics,
+    ProjectLedgerReport,
+};
 pub use decision::{Decision, DecisionEngine, DecisionOutcome};
 pub use error::{Result, VwlError};
 pub use git::{GitInspector, GitRepoInfo};

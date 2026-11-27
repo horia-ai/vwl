@@ -1,0 +1,49 @@
+{
+  "repo_name": "horia-ai/vwl",
+  "canonical_head": "f2491fa307ff98385d084eafc10c62f0c5c1b0a9",
+  "total_tasks": 0,
+  "total_work_units": 0,
+  "contributors": [
+    {
+      "contributor_id": "atrifan (Alex Trifan)",
+      "role": "Lead Protocol Architect",
+      "confirmed_wus": 0,
+      "rejected_wus": 0,
+      "first_pass_rate": 100.0,
+      "effectiveness_score": 100.0,
+      "rep_earned": 50.0,
+      "paid_work": 50000,
+      "pending_vesting_work": 25000,
+      "reserved_work": 25000
+    }
+  ],
+  "costs": {
+    "total_project_funded": 1000000,
+    "total_paid_liquid": 50000,
+    "total_pending_vesting": 25000,
+    "total_reserved_escrow": 25000,
+    "unallocated_balance": 900000,
+    "milestone_budgets": {
+      "Gate 10 — DEX Liquidity": 400000,
+      "Gate 5 — Local Economic State Machine": 200000,
+      "Gate 1 — Node and Project Identity": 100000,
+      "Gate 0 — Minimum Falsifiable VWL": 100000,
+      "Gate 7 — Testnet Contracts": 200000
+    }
+  },
+  "contracts": [
+    {
+      "engagement_id": "eng_gate0_bootstrap",
+      "project_id": "horia-ai/vwl",
+      "milestone_id": "Gate 0 — Minimum Falsifiable VWL",
+      "contributor_id": "atrifan",
+      "role": "Protocol Architect",
+      "max_work_allocation": 100000,
+      "paid_amount": 50000,
+      "vesting_amount": 25000,
+      "reserved_amount": 25000,
+      "status": "Active"
+    }
+  ],
+  "generated_at": "2026-11-27T02:00:00Z"
+}

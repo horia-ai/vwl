@@ -7,6 +7,7 @@
 [![Mutation Testing Gate](https://github.com/horia-ai/vwl/actions/workflows/mutation-testing.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/mutation-testing.yml)
 [![Security & Secrets](https://github.com/horia-ai/vwl/actions/workflows/security.yml/badge.svg)](https://github.com/horia-ai/vwl/actions/workflows/security.yml)
 [![GitHub Pages](https://github.com/horia-ai/vwl/actions/workflows/gh-pages.yml/badge.svg)](https://horia-ai.github.io/vwl/)
+[![Analytics Dashboard](https://img.shields.io/badge/GitHub%20Pages-Analytics%20%26%20REP-success)](https://horia-ai.github.io/vwl/analytics.html)
 [![Project Board](https://img.shields.io/badge/GitHub%20Project-VWL%20Board-blue)](https://github.com/orgs/horia-ai/projects/1)
 
 ---
@@ -89,6 +90,12 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 # Check repository status and canonical base
 cargo run -p vwl-cli -- status
+
+# Generate contributor effectiveness, REP, and cost allocation report in the terminal
+cargo run -p vwl-cli -- report
+
+# Export report to GitHub Pages dashboard (docs/data/ledger_report.json)
+cargo run -p vwl-cli -- report --gh-pages
 
 # Replay ledger state
 cargo run -p vwl-cli -- replay

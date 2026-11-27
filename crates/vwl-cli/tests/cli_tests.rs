@@ -29,3 +29,17 @@ fn test_cli_status_command() {
     assert!(stdout.contains("Repository Root:"));
     assert!(stdout.contains("HEAD SHA:"));
 }
+
+#[test]
+fn test_cli_report_command() {
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .arg("report")
+        .output()
+        .expect("Failed to execute vwl report");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("VIRTUAL WORK LEDGER (VWL) — CONTRIBUTORS & COST REPORT"));
+    assert!(stdout.contains("CONTRIBUTORS & EFFECTIVENESS"));
+    assert!(stdout.contains("COST & COMPENSATION ALLOCATION"));
+}

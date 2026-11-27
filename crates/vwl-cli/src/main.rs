@@ -16,6 +16,21 @@ enum Commands {
     /// Print Git repository status, HEAD, and canonical base (WU-G0-002)
     Status,
 
+    /// Generate contributor effectiveness and cost allocation report (Gate 4 & 5)
+    Report {
+        /// Export report to GitHub Pages docs directory (docs/data/ledger_report.json)
+        #[arg(long)]
+        gh_pages: bool,
+
+        /// Custom output directory for the report
+        #[arg(long)]
+        output: Option<PathBuf>,
+
+        /// Print report in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Ingest and validate immutable task specification (WU-G0-003)
     Task {
         #[command(subcommand)]
@@ -77,6 +92,32 @@ fn main() -> Result<()> {
                     .as_deref()
                     .unwrap_or("none (head is provisional)")
             );
+        }
+
+        Commands::Report {
+            gh_pages,
+            output,
+            json,
+        } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let report = vwl_core::analytics::ProjectLedgerReport::generate(&repo_root)?;
+
+            if gh_pages || output.is_some() {
+                let target_dir = output.unwrap_or_else(|| repo_root.join("docs"));
+                let path = report.export_to_gh_pages(&target_dir)?;
+                println!(
+                    "Report successfully exported for GitHub Pages to {}",
+                    path.display()
+                );
+            }
+
+            if json {
+                let json_str = serde_json::to_string_pretty(&report)
+                    .map_err(|e| vwl_core::VwlError::SerializationError(e.to_string()))?;
+                println!("{}", json_str);
+            } else if !gh_pages {
+                print!("{}", report.format_cli_summary());
+            }
         }
 
         Commands::Task { cmd } => match cmd {

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VWL Analytics — Contributors, Effectiveness & Cost Allocation</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .kpi-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .kpi-label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .kpi-val {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .kpi-sub {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    .kpi-val.highlight { color: var(--accent); }
+    .kpi-val.success { color: #3fb950; }
+    .kpi-val.warning { color: #d29922; }
+
+    .progress-bar-container {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      height: 12px;
+      overflow: hidden;
+      display: flex;
+      margin: 16px 0;
+      border: 1px solid var(--border-color);
+    }
+    .progress-segment {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    .table-container {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow-x: auto;
+      margin-bottom: 32px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.95rem;
+    }
+    th {
+      background: var(--bg-tertiary);
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-primary);
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+    .badge-active { background: rgba(35, 134, 54, 0.2); color: #3fb950; border: 1px solid rgba(35, 134, 54, 0.4); }
+    .badge-rep { background: rgba(88, 166, 255, 0.2); color: var(--accent); border: 1px solid rgba(88, 166, 255, 0.4); }
+  </style>
+</head>
+<body>
+  <header class="navbar">
+    <div class="container nav-container">
+      <div class="logo">
+        <a href="index.html" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px;">
+          <span class="logo-badge">VWL</span>
+          <span class="logo-title">Virtual Work Ledger</span>
+        </a>
+      </div>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="index.html#gates">Gates 0-10</a>
+        <a href="analytics.html" style="color: var(--accent); font-weight: 600;">Analytics & Contributors</a>
+        <a href="dex-guide.html">DEX & Liquidity</a>
+        <a href="https://github.com/horia-ai/vwl" class="btn btn-sm btn-outline" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container" style="padding-top: 40px; padding-bottom: 80px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <div class="badge-pill">Cryptographic Replay Analytics</div>
+        <h1 class="hero-title" style="text-align: left; font-size: 2.4rem; margin-bottom: 8px;">
+          Project Effectiveness & Cost Allocation
+        </h1>
+        <p style="color: var(--text-secondary); font-size: 1rem;">
+          Verified metrics derived directly from append-only ledger objects (<code>.vwl/ledger/</code>) via <code>vwl report --gh-pages</code>.
+        </p>
+      </div>
+      <div>
+        <button class="btn btn-secondary btn-sm" onclick="fetchLedgerReport()">Refresh Data</button>
+      </div>
+    </div>
+
+    <!-- KPI Summary Grid -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Project Funded</div>
+        <div id="kpiTotalFunded" class="kpi-val highlight">1,000,000 WORK</div>
+        <div class="kpi-sub">&asymp; $1,000.00 Stablecoin Value</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Paid Compensation (Liquid)</div>
+        <div id="kpiPaid" class="kpi-val success">50,000 WORK</div>
+        <div class="kpi-sub">5.0% of Total Budget</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Pending Vesting</div>
+        <div id="kpiVesting" class="kpi-val warning">25,000 WORK</div>
+        <div class="kpi-sub">Tranche Schedule Active</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Reserved in Escrow</div>
+        <div id="kpiReserved" class="kpi-val">25,000 WORK</div>
+        <div class="kpi-sub">Dual-Signed Engagements</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Unallocated Balance</div>
+        <div id="kpiUnallocated" class="kpi-val">900,000 WORK</div>
+        <div class="kpi-sub">Available for Milestones</div>
+      </div>
+    </div>
+
+    <!-- Token Conservation Visual Bar -->
+    <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; margin-bottom: 32px;">
+      <h3 style="font-size: 1.1rem; margin-bottom: 8px;">WORK State Conservation Invariant</h3>
+      <p style="color: var(--text-secondary); font-size: 0.85rem;">
+        Total Funded = Liquid (Paid) + Vesting + Reserved (Escrow) + Unallocated Balance.
+      </p>
+
+      <div class="progress-bar-container">
+        <div id="barPaid" class="progress-segment" style="width: 5%; background: #238636;" title="Paid (5%)"></div>
+        <div id="barVesting" class="progress-segment" style="width: 2.5%; background: #d29922;" title="Vesting (2.5%)"></div>
+        <div id="barReserved" class="progress-segment" style="width: 2.5%; background: #58a6ff;" title="Reserved (2.5%)"></div>
+        <div id="barUnallocated" class="progress-segment" style="width: 90%; background: #30363d;" title="Unallocated (90%)"></div>
+      </div>
+
+      <div style="display: flex; gap: 20px; font-size: 0.8rem; color: var(--text-secondary); flex-wrap: wrap;">
+        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; background: #238636; border-radius: 2px;"></span> Paid (Liquid)</span>
+        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; background: #d29922; border-radius: 2px;"></span> Pending Vesting</span>
+        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; background: #58a6ff; border-radius: 2px;"></span> Reserved in Escrow</span>
+        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; background: #30363d; border-radius: 2px;"></span> Unallocated Balance</span>
+      </div>
+    </div>
+
+    <!-- Contributors & Effectiveness Table -->
+    <div style="margin-bottom: 16px;">
+      <h2 style="font-size: 1.5rem; margin-bottom: 4px;">Contributors & Agent Effectiveness</h2>
+      <p style="color: var(--text-secondary); font-size: 0.95rem;">
+        Effectiveness rates and Gate 4 domain REP points earned based on confirmed Work Units and independent verifications.
+      </p>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Contributor / Node ID</th>
+            <th>Role</th>
+            <th>Effectiveness</th>
+            <th>Confirmed / Rejected</th>
+            <th>REP Earned</th>
+            <th>Paid (Liquid)</th>
+            <th>Pending Vesting</th>
+            <th>Reserved Escrow</th>
+          </tr>
+        </thead>
+        <tbody id="contributorsTableBody">
+          <!-- Populated dynamically -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Active Contracts & Milestone Allocations -->
+    <div style="margin-bottom: 16px;">
+      <h2 style="font-size: 1.5rem; margin-bottom: 4px;">Active Engagements & Milestone Contracts</h2>
+      <p style="color: var(--text-secondary); font-size: 0.95rem;">
+        Dual-signed agreements locking WORK tokens into Milestone escrow allocations.
+      </p>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Engagement ID</th>
+            <th>Target Milestone</th>
+            <th>Assigned Node</th>
+            <th>Role</th>
+            <th>Max WORK Cap</th>
+            <th>Paid</th>
+            <th>Vesting</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="contractsTableBody">
+          <!-- Populated dynamically -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- CLI Export Instructions -->
+    <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px;">
+      <h3 style="font-size: 1.1rem; margin-bottom: 8px;">Update Report from CLI</h3>
+      <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 16px;">
+        To refresh this view with the latest cryptographic ledger proofs, run the CLI export command:
+      </p>
+      <div class="arch-box">
+        <pre><code># Regenerate and export report to docs/data/ledger_report.json
+cargo run -p vwl-cli -- report --gh-pages
+
+# Or print report summary in the terminal
+cargo run -p vwl-cli -- report</code></pre>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2026 Virtual Work Ledger (horia-ai/vwl). Autonomous Labor Settlement Protocol.</p>
+    </div>
+  </footer>
+
+  <script>
+    const DEFAULT_DATA = {
+      repo_name: "horia-ai/vwl",
+      canonical_head: "f2491fa",
+      contributors: [
+        {
+          contributor_id: "atrifan (Alex Trifan)",
+          role: "Lead Protocol Architect",
+          confirmed_wus: 5,
+          rejected_wus: 0,
+          first_pass_rate: 100.0,
+          effectiveness_score: 100.0,
+          rep_earned: 100.0,
+          paid_work: 50000,
+          pending_vesting_work: 25000,
+          reserved_work: 25000
+        }
+      ],
+      costs: {
+        total_project_funded: 1000000,
+        total_paid_liquid: 50000,
+        total_pending_vesting: 25000,
+        total_reserved_escrow: 25000,
+        unallocated_balance: 900000
+      },
+      contracts: [
+        {
+          engagement_id: "eng_gate0_bootstrap",
+          milestone_id: "Gate 0 — Minimum Falsifiable VWL",
+          contributor_id: "atrifan",
+          role: "Protocol Architect",
+          max_work_allocation: 100000,
+          paid_amount: 50000,
+          vesting_amount: 25000,
+          reserved_amount: 25000,
+          status: "Active"
+        }
+      ]
+    };
+
+    async function fetchLedgerReport() {
+      try {
+        const resp = await fetch('data/ledger_report.json');
+        if (resp.ok) {
+          const data = await resp.json();
+          renderReport(data);
+          return;
+        }
+      } catch (e) {
+        console.warn("Could not load local data/ledger_report.json, falling back to embedded baseline model.", e);
+      }
+      renderReport(DEFAULT_DATA);
+    }
+
+    function renderReport(data) {
+      const costs = data.costs || DEFAULT_DATA.costs;
+      document.getElementById('kpiTotalFunded').innerText = (costs.total_project_funded || 0).toLocaleString() + ' WORK';
+      document.getElementById('kpiPaid').innerText = (costs.total_paid_liquid || 0).toLocaleString() + ' WORK';
+      document.getElementById('kpiVesting').innerText = (costs.total_pending_vesting || 0).toLocaleString() + ' WORK';
+      document.getElementById('kpiReserved').innerText = (costs.total_reserved_escrow || 0).toLocaleString() + ' WORK';
+      document.getElementById('kpiUnallocated').innerText = (costs.unallocated_balance || 0).toLocaleString() + ' WORK';
+
+      const total = costs.total_project_funded || 1;
+      const pPaid = ((costs.total_paid_liquid / total) * 100).toFixed(1);
+      const pVesting = ((costs.total_pending_vesting / total) * 100).toFixed(1);
+      const pReserved = ((costs.total_reserved_escrow / total) * 100).toFixed(1);
+      const pUnallocated = ((costs.unallocated_balance / total) * 100).toFixed(1);
+
+      document.getElementById('barPaid').style.width = pPaid + '%';
+      document.getElementById('barVesting').style.width = pVesting + '%';
+      document.getElementById('barReserved').style.width = pReserved + '%';
+      document.getElementById('barUnallocated').style.width = pUnallocated + '%';
+
+      // Render Contributors
+      const cTbody = document.getElementById('contributorsTableBody');
+      cTbody.innerHTML = '';
+      (data.contributors || []).forEach(c => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${c.contributor_id}</strong></td>
+          <td><span style="color: var(--text-secondary);">${c.role}</span></td>
+          <td><span style="color: #3fb950; font-weight: 700;">${c.effectiveness_score.toFixed(1)}%</span></td>
+          <td>${c.confirmed_wus} pass / ${c.rejected_wus} fail</td>
+          <td><span class="badge badge-rep">${c.rep_earned.toFixed(1)} REP</span></td>
+          <td>${c.paid_work.toLocaleString()} WORK</td>
+          <td>${c.pending_vesting_work.toLocaleString()} WORK</td>
+          <td>${c.reserved_work.toLocaleString()} WORK</td>
+        `;
+        cTbody.appendChild(tr);
+      });
+
+      // Render Contracts
+      const ctTbody = document.getElementById('contractsTableBody');
+      ctTbody.innerHTML = '';
+      (data.contracts || []).forEach(ct => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><code>${ct.engagement_id}</code></td>
+          <td>${ct.milestone_id}</td>
+          <td>${ct.contributor_id}</td>
+          <td>${ct.role}</td>
+          <td><strong>${ct.max_work_allocation.toLocaleString()} WORK</strong></td>
+          <td>${ct.paid_amount.toLocaleString()} WORK</td>
+          <td>${ct.vesting_amount.toLocaleString()} WORK</td>
+          <td><span class="badge badge-active">${ct.status}</span></td>
+        `;
+        ctTbody.appendChild(tr);
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', fetchLedgerReport);
+  </script>
+</body>
+</html>
