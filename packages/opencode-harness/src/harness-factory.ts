@@ -9,6 +9,8 @@ import {
   evaluateVerificationEvidence,
 } from "./verifier.js";
 import path from "node:path";
+import fs from "node:fs";
+import { execSync } from "node:child_process";
 
 export type HarnessType = "opencode" | "claude" | "copilot" | "gemini" | "custom";
 
@@ -19,14 +21,55 @@ export interface HarnessAdapter {
   getSkillTargetDir(repoRoot: string): string;
 }
 
+function writeBoundedTaskAndGetCandidate(bounded: TaskContext, prefix: string): string {
+  const worktreeDir = bounded.worktreePath;
+  if (!fs.existsSync(worktreeDir)) {
+    fs.mkdirSync(worktreeDir, { recursive: true });
+  }
+  const acceptanceBullets = (bounded.acceptance || []).map((a) => `- ${a}`).join("\n");
+  const taskMd = `# Task: ${bounded.taskId}
+
+## Objective
+${bounded.objective}
+
+## Canonical Base
+${bounded.baseCommit}
+
+## Acceptance Criteria
+${acceptanceBullets}
+
+## Bounded Instructions
+1. Strictly follow TDD (Red -> Green -> Refactor).
+2. Ensure tests pass and mutation coverage >= 80%.
+3. Verify changes with \`vwl verify precommit\`.
+`;
+  fs.writeFileSync(path.join(worktreeDir, "TASK.md"), taskMd);
+
+  let candidateCommit = `${prefix}-${bounded.taskId.toLowerCase()}`;
+  try {
+    const gitHead = execSync("git rev-parse HEAD", {
+      cwd: worktreeDir,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (gitHead && gitHead !== bounded.baseCommit) {
+      candidateCommit = gitHead;
+    }
+  } catch {
+    // fallback
+  }
+  return candidateCommit;
+}
+
 export class OpenCodeHarnessAdapter implements HarnessAdapter {
   public readonly name: HarnessType = "opencode";
 
   public async executeDeveloper(context: TaskContext): Promise<WorkerExecutionResult> {
     const bounded = createBoundedWorkerContext(context);
+    const candidateCommit = writeBoundedTaskAndGetCandidate(bounded, "candidate");
     return {
       taskId: bounded.taskId,
-      candidateCommit: `candidate-${bounded.taskId.toLowerCase()}`,
+      candidateCommit,
       status: "success",
       logs: `OpenCode executed bounded prompt for task ${bounded.taskId} on base ${bounded.baseCommit}`,
     };
@@ -46,9 +89,10 @@ export class ClaudeHarnessAdapter implements HarnessAdapter {
 
   public async executeDeveloper(context: TaskContext): Promise<WorkerExecutionResult> {
     const bounded = createBoundedWorkerContext(context);
+    const candidateCommit = writeBoundedTaskAndGetCandidate(bounded, "claude");
     return {
       taskId: bounded.taskId,
-      candidateCommit: `claude-${bounded.taskId.toLowerCase()}`,
+      candidateCommit,
       status: "success",
       logs: `Claude Code executed bounded instructions for ${bounded.taskId} in isolated worktree`,
     };
@@ -75,9 +119,10 @@ export class CopilotHarnessAdapter implements HarnessAdapter {
 
   public async executeDeveloper(context: TaskContext): Promise<WorkerExecutionResult> {
     const bounded = createBoundedWorkerContext(context);
+    const candidateCommit = writeBoundedTaskAndGetCandidate(bounded, "copilot");
     return {
       taskId: bounded.taskId,
-      candidateCommit: `copilot-${bounded.taskId.toLowerCase()}`,
+      candidateCommit,
       status: "success",
       logs: `GitHub Copilot workspace session completed task ${bounded.taskId}`,
     };
@@ -104,9 +149,10 @@ export class GeminiHarnessAdapter implements HarnessAdapter {
 
   public async executeDeveloper(context: TaskContext): Promise<WorkerExecutionResult> {
     const bounded = createBoundedWorkerContext(context);
+    const candidateCommit = writeBoundedTaskAndGetCandidate(bounded, "gemini");
     return {
       taskId: bounded.taskId,
-      candidateCommit: `gemini-${bounded.taskId.toLowerCase()}`,
+      candidateCommit,
       status: "success",
       logs: `Gemini / Antigravity agent executed bounded task ${bounded.taskId} in isolated worktree`,
     };
@@ -133,9 +179,10 @@ export class CustomHarnessAdapter implements HarnessAdapter {
 
   public async executeDeveloper(context: TaskContext): Promise<WorkerExecutionResult> {
     const bounded = createBoundedWorkerContext(context);
+    const candidateCommit = writeBoundedTaskAndGetCandidate(bounded, "custom");
     return {
       taskId: bounded.taskId,
-      candidateCommit: `custom-${bounded.taskId.toLowerCase()}`,
+      candidateCommit,
       status: "success",
       logs: `Custom harness executed for ${bounded.taskId}`,
     };

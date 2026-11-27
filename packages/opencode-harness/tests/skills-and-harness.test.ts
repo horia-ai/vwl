@@ -31,6 +31,27 @@ describe("Agent Harness Factory & Skill Installer Tests", () => {
     expect(skills).toContain("bounded-verifier");
     expect(skills).toContain("economic-conservation");
     expect(skills).toContain("dex-liquidity-rules");
+    expect(skills).toContain("spec-writer-adversarial-skeptic");
+  });
+
+  it("executes developer worker writing TASK.md in worktree", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vwl-dev-worker-"));
+    const worktreePath = path.join(tmpDir, "worktree-1");
+    const opencode = getHarnessAdapter("opencode");
+    const result = await opencode.executeDeveloper({
+      taskId: "TASK-DEV-001",
+      objective: "Build CLI feature",
+      acceptance: ["cargo test passes"],
+      baseCommit: "base12345678",
+      worktreePath,
+    });
+    expect(result.status).toBe("success");
+    expect(result.candidateCommit).toBe("candidate-task-dev-001");
+    expect(fs.existsSync(path.join(worktreePath, "TASK.md"))).toBe(true);
+    const content = fs.readFileSync(path.join(worktreePath, "TASK.md"), "utf-8");
+    expect(content).toContain("TASK-DEV-001");
+    expect(content).toContain("Build CLI feature");
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("installs skill into target harness paths (Claude, Copilot, OpenCode, Gemini)", () => {
