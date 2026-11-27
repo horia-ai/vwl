@@ -345,7 +345,13 @@ fn main() -> Result<()> {
                 poll_interval_secs,
             } => {
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
-                run_worker_daemon(&repo_root, &harness, continuous, max_tasks, poll_interval_secs)?;
+                run_worker_daemon(
+                    &repo_root,
+                    &harness,
+                    continuous,
+                    max_tasks,
+                    poll_interval_secs,
+                )?;
             }
         },
 
@@ -668,7 +674,11 @@ fn main() -> Result<()> {
                 Some(bin_path) => std::process::Command::new(bin_path),
                 None => {
                     let mut c = std::process::Command::new("cargo");
-                    c.arg("run").arg("-p").arg("vwl-tui").arg("--quiet").arg("--");
+                    c.arg("run")
+                        .arg("-p")
+                        .arg("vwl-tui")
+                        .arg("--quiet")
+                        .arg("--");
                     c
                 }
             };
@@ -678,7 +688,9 @@ fn main() -> Result<()> {
             }
             let status = cmd.status()?;
             if !status.success() {
-                return Err(VwlError::LedgerError("TUI exited with non-zero status".to_string()));
+                return Err(VwlError::LedgerError(
+                    "TUI exited with non-zero status".to_string(),
+                ));
             }
         }
     }
@@ -711,14 +723,11 @@ fn run_worker_daemon(
         // A task is pending if no work unit associated with it has a Confirmed decision.
         let mut pending_task: Option<Task> = None;
         for t in &tasks {
-            let confirmed = work_units
-                .iter()
-                .filter(|wu| wu.task == t.id)
-                .any(|wu| {
-                    decisions
-                        .iter()
-                        .any(|d| d.subject == wu.commit && d.outcome == DecisionOutcome::Confirmed)
-                });
+            let confirmed = work_units.iter().filter(|wu| wu.task == t.id).any(|wu| {
+                decisions
+                    .iter()
+                    .any(|d| d.subject == wu.commit && d.outcome == DecisionOutcome::Confirmed)
+            });
             if !confirmed {
                 pending_task = Some(t.clone());
                 break;
@@ -727,17 +736,26 @@ fn run_worker_daemon(
 
         if let Some(task) = pending_task {
             println!("\n[Runner] ==================================================");
-            println!("[Runner] Picked up Task: {} - '{}'", task.id, task.objective);
+            println!(
+                "[Runner] Picked up Task: {} - '{}'",
+                task.id, task.objective
+            );
             println!("[Runner] Base commit: {}", task.base);
             println!("[Runner] Acceptance criteria: {:?}", task.acceptance);
 
             // Step 1: Create isolated worktree directory
             let worktree_dir = repo_root.join(".vwl").join("worktrees").join(&task.id);
             fs::create_dir_all(&worktree_dir)?;
-            println!("[Runner] Isolated worktree initialized at {}", worktree_dir.display());
+            println!(
+                "[Runner] Isolated worktree initialized at {}",
+                worktree_dir.display()
+            );
 
             // Step 2: Developer Phase (Bounded context)
-            println!("[Runner] Executing developer worker under harness '{}'...", harness);
+            println!(
+                "[Runner] Executing developer worker under harness '{}'...",
+                harness
+            );
             let candidate_commit = format!(
                 "cand_{}_{}",
                 task.id.to_lowercase().replace('-', "_"),
@@ -745,7 +763,10 @@ fn run_worker_daemon(
             );
             let wu = WorkUnit::new(&task.id, &candidate_commit, &task.base)?;
             ledger.append_work_unit(&wu)?;
-            println!("[Runner] Work Unit produced: commit {} (base: {})", wu.commit, wu.base);
+            println!(
+                "[Runner] Work Unit produced: commit {} (base: {})",
+                wu.commit, wu.base
+            );
 
             // Step 3: Zero-Chat Verifier Phase
             println!(
@@ -760,12 +781,19 @@ fn run_worker_daemon(
                 Some("All acceptance criteria verified pass independently".to_string()),
             )?;
             ledger.append_proof(&proof)?;
-            println!("[Runner] Proof recorded: Type {:?}, Verdict {:?}", proof.r#type, proof.verdict);
+            println!(
+                "[Runner] Proof recorded: Type {:?}, Verdict {:?}",
+                proof.r#type, proof.verdict
+            );
 
             // Step 4: Decision Engine
-            let decision = DecisionEngine::evaluate(&candidate_commit, &[proof], &[ProofType::Work]);
+            let decision =
+                DecisionEngine::evaluate(&candidate_commit, &[proof], &[ProofType::Work]);
             ledger.append_decision(&decision)?;
-            println!("[Runner] Deterministic Decision: {:?} ({})", decision.outcome, decision.reason);
+            println!(
+                "[Runner] Deterministic Decision: {:?} ({})",
+                decision.outcome, decision.reason
+            );
 
             // Step 5: Economic Settlement & Project Report
             if decision.outcome == DecisionOutcome::Confirmed {
@@ -783,7 +811,10 @@ fn run_worker_daemon(
                         if let Err(e) = econ.settle_verified_work(&eid, now) {
                             eprintln!("[Runner] Warning settling engagement {}: {:?}", eid, e);
                         } else {
-                            println!("[Runner] Economic settlement completed for engagement {}", eid);
+                            println!(
+                                "[Runner] Economic settlement completed for engagement {}",
+                                eid
+                            );
                         }
                     }
 

@@ -138,7 +138,10 @@ impl LocalLedger {
     }
 
     pub fn get_decision_for_subject(&self, subject: &str) -> Result<Option<Decision>> {
-        let file_path = self.root_dir.join("decisions").join(format!("{}.yaml", subject));
+        let file_path = self
+            .root_dir
+            .join("decisions")
+            .join(format!("{}.yaml", subject));
         if file_path.exists() {
             let content = fs::read_to_string(file_path)?;
             let dec: Decision = serde_yaml::from_str(&content)

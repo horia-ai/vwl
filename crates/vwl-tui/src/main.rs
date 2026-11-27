@@ -64,7 +64,10 @@ impl App {
             Err(_) => ("unknown".to_string(), "none".to_string()),
         };
 
-        let cred_path = repo_root.join(".vwl").join("identity").join("credential.yaml");
+        let cred_path = repo_root
+            .join(".vwl")
+            .join("identity")
+            .join("credential.yaml");
         let (node_id, node_name) = if cred_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&cred_path) {
                 if let Ok(cred) = serde_yaml::from_str::<NodeCredential>(&content) {
@@ -98,46 +101,60 @@ impl App {
             Vec::new()
         };
 
-        let (tasks, work_units, decisions, proofs) = if let Ok(ledger) = LocalLedger::new(&repo_root) {
-            (
-                ledger.get_tasks().unwrap_or_default(),
-                ledger.get_work_units().unwrap_or_default(),
-                ledger.get_decisions().unwrap_or_default(),
-                ledger.get_all_proofs().unwrap_or_default(),
-            )
-        } else {
-            (Vec::new(), Vec::new(), Vec::new(), Vec::new())
-        };
-
-        let (total_usd, locked_work, reserved_work, earned_work, vesting_work, liquid_work, conservation_holds) =
-            if let Ok(econ) = EconomicLedger::load_or_create(&repo_root) {
-                let holds = econ.verify_conservation().is_ok();
-                let (tot_work, locked, res) = econ
-                    .projects
-                    .values()
-                    .next()
-                    .map(|p| (p.total_deposited_work, p.project_locked_work, p.reserved_work))
-                    .unwrap_or_default();
-
-                let (earned_node, vesting_node, liquid_node) = econ
-                    .nodes
-                    .values()
-                    .next()
-                    .map(|n| (n.earned_work, n.vesting_work, n.liquid_work))
-                    .unwrap_or_default();
-
+        let (tasks, work_units, decisions, proofs) =
+            if let Ok(ledger) = LocalLedger::new(&repo_root) {
                 (
-                    tot_work / 1_000,
-                    locked,
-                    res,
-                    earned_node,
-                    vesting_node,
-                    liquid_node,
-                    holds,
+                    ledger.get_tasks().unwrap_or_default(),
+                    ledger.get_work_units().unwrap_or_default(),
+                    ledger.get_decisions().unwrap_or_default(),
+                    ledger.get_all_proofs().unwrap_or_default(),
                 )
             } else {
-                (0, 0, 0, 0, 0, 0, true)
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new())
             };
+
+        let (
+            total_usd,
+            locked_work,
+            reserved_work,
+            earned_work,
+            vesting_work,
+            liquid_work,
+            conservation_holds,
+        ) = if let Ok(econ) = EconomicLedger::load_or_create(&repo_root) {
+            let holds = econ.verify_conservation().is_ok();
+            let (tot_work, locked, res) = econ
+                .projects
+                .values()
+                .next()
+                .map(|p| {
+                    (
+                        p.total_deposited_work,
+                        p.project_locked_work,
+                        p.reserved_work,
+                    )
+                })
+                .unwrap_or_default();
+
+            let (earned_node, vesting_node, liquid_node) = econ
+                .nodes
+                .values()
+                .next()
+                .map(|n| (n.earned_work, n.vesting_work, n.liquid_work))
+                .unwrap_or_default();
+
+            (
+                tot_work / 1_000,
+                locked,
+                res,
+                earned_node,
+                vesting_node,
+                liquid_node,
+                holds,
+            )
+        } else {
+            (0, 0, 0, 0, 0, 0, true)
+        };
 
         Self {
             current_tab: 0,
@@ -226,11 +243,24 @@ impl App {
 
         // Footer Help
         let footer_text = Line::from(vec![
-            Span::styled(" [Tab/1-5] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " [Tab/1-5] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("Switch Views | "),
-            Span::styled(" [r] ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " [r] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("Refresh | "),
-            Span::styled(" [q/Esc] ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " [q/Esc] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::raw("Quit TUI"),
         ]);
         let footer = Paragraph::new(footer_text)
@@ -262,7 +292,12 @@ impl App {
             ]),
             Line::from(vec![
                 Span::styled("Protocol State: ", Style::default().fg(Color::DarkGray)),
-                Span::styled("ACTIVE", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "ACTIVE",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" | Gate 0-5 Verified | 0 Chat Zero-Trust Verification Enabled"),
             ]),
         ];
@@ -441,43 +476,74 @@ impl App {
         let econ_lines = vec![
             Line::from(vec![
                 Span::styled("Fiat Deposited:     ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("${} USD", self.total_usd), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                Span::styled("  (1 USD = 1,000 WORK)", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("${} USD", self.total_usd),
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "  (1 USD = 1,000 WORK)",
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("Project Locked:     ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{} WORK", self.locked_work), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!("{} WORK", self.locked_work),
+                    Style::default().fg(Color::Cyan),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("Budget Reserved:    ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{} WORK", self.reserved_work), Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    format!("{} WORK", self.reserved_work),
+                    Style::default().fg(Color::Yellow),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("Node Earned:        ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{} WORK", self.earned_work), Style::default().fg(Color::Green)),
+                Span::styled(
+                    format!("{} WORK", self.earned_work),
+                    Style::default().fg(Color::Green),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("Node Vesting:       ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{} WORK", self.vesting_work), Style::default().fg(Color::Magenta)),
+                Span::styled(
+                    format!("{} WORK", self.vesting_work),
+                    Style::default().fg(Color::Magenta),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("Node Liquid:        ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{} WORK", self.liquid_work), Style::default().fg(Color::Blue)),
+                Span::styled(
+                    format!("{} WORK", self.liquid_work),
+                    Style::default().fg(Color::Blue),
+                ),
             ]),
             Line::from(""),
             Line::from(vec![
-                Span::styled("Conservation Status: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    "Conservation Status: ",
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::styled(
                     conservation_str,
                     if self.conservation_holds {
-                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
                     },
                 ),
             ]),
             Line::from(vec![
-                Span::styled("Formula:             ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    "Formula:             ",
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::raw("TotalDeposited == ProjectLocked + Reserved + Earned + Vesting + Liquid"),
             ]),
         ];
@@ -521,7 +587,13 @@ impl App {
             ],
         )
         .header(
-            Row::new(vec!["Subject Commit", "Proof Type", "Verdict", "Evidence Command"]).style(
+            Row::new(vec![
+                "Subject Commit",
+                "Proof Type",
+                "Verdict",
+                "Evidence Command",
+            ])
+            .style(
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
@@ -537,7 +609,10 @@ impl App {
     }
 }
 
-fn run_interactive_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, mut app: App) -> io::Result<()> {
+fn run_interactive_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    mut app: App,
+) -> io::Result<()> {
     loop {
         terminal.draw(|f| app.draw(f))?;
 
@@ -568,7 +643,9 @@ pub fn render_headless(app: &mut App, tab: usize, width: u16, height: u16) -> St
     app.current_tab = tab;
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("Failed to initialize test backend");
-    terminal.draw(|f| app.draw(f)).expect("Failed to draw frame");
+    terminal
+        .draw(|f| app.draw(f))
+        .expect("Failed to draw frame");
     let buffer = terminal.backend().buffer();
 
     let mut out = String::new();
@@ -592,7 +669,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if args.print_rendered {
             print!("{}", rendered);
         } else {
-            println!("Headless TUI render for view {} successful ({} bytes)", tab, rendered.len());
+            println!(
+                "Headless TUI render for view {} successful ({} bytes)",
+                tab,
+                rendered.len()
+            );
         }
         return Ok(());
     }
@@ -636,8 +717,15 @@ mod tests {
         // Test tabs 0 to 4
         for tab in 0..5 {
             let rendered = render_headless(&mut app, tab, 120, 30);
-            assert!(!rendered.is_empty(), "Tab {} should produce non-empty buffer", tab);
-            assert!(rendered.contains("Virtual Work Ledger (VWL)"), "Should contain header");
+            assert!(
+                !rendered.is_empty(),
+                "Tab {} should produce non-empty buffer",
+                tab
+            );
+            assert!(
+                rendered.contains("Virtual Work Ledger (VWL)"),
+                "Should contain header"
+            );
         }
     }
 

@@ -333,7 +333,9 @@ fn test_cli_worker_run_and_tui_render() {
         .current_dir(temp.path())
         .output()
         .expect("git rev-parse");
-    let head_sha = String::from_utf8_lossy(&head_output.stdout).trim().to_string();
+    let head_sha = String::from_utf8_lossy(&head_output.stdout)
+        .trim()
+        .to_string();
 
     // 2. Add a Task
     let task_yaml = format!(
