@@ -11,6 +11,7 @@ pub mod ledger;
 pub mod market;
 pub mod proof;
 pub mod replay;
+pub mod repometer;
 pub mod skills;
 pub mod task;
 pub mod work_unit;
@@ -40,6 +41,10 @@ pub use ledger::LocalLedger;
 pub use market::{Offer, ProjectManifest, Role};
 pub use proof::{Proof, ProofEvidence, ProofType, Verdict, VerificationPlane, VisibilityProfile};
 pub use replay::{ReplayEngine, ReplayState};
+pub use repometer::{
+    Attribution, AttributionConfidence, ImpactAssessment, ImpactGraph, ImpactState, Outcome,
+    OutcomeSeverity, OutcomeType, RepometerEngine, RepometerMetrics,
+};
 pub use skills::{install_skill, list_skills, SkillDef, SKILLS};
 pub use task::Task;
 pub use work_unit::{CommitEntry, WorkUnit};
