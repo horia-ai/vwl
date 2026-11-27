@@ -23,6 +23,11 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Set up sccache
+        uses: mozilla/sccache-action@v0.0.8
+        with:
+          version: "v0.8.2"
+
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
 
@@ -30,9 +35,15 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Run Clippy linter (-D warnings)
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: "sccache"
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run unit and integration tests
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: "sccache"
         run: cargo test --all-targets --all-features
 
   node-check:
