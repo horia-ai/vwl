@@ -1176,3 +1176,115 @@ base: "{}"
     assert!(run_val_str.contains("Role: verifier"));
     assert!(run_val_str.contains("Completed validation for candidate"));
 }
+
+#[test]
+fn test_cli_repo_init_and_precommit_gates() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "init@vwl.network"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "VWL Init"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Create minimal package.json and tsconfig.json to simulate a project repo
+    let pkg_json = r#"{
+  "name": "target-app",
+  "scripts": {
+    "test": "echo 'running test suite'"
+  }
+}"#;
+    fs::write(temp.path().join("package.json"), pkg_json).unwrap();
+    fs::write(temp.path().join("tsconfig.json"), "{}\n").unwrap();
+
+    // 1. Run vwl init
+    let init_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(init_out.status.success());
+    let init_str = String::from_utf8_lossy(&init_out.stdout);
+    assert!(init_str.contains("VWL REPOSITORY INITIALIZATION COMPLETE"));
+    assert!(init_str.contains("typescript"));
+    assert!(init_str.contains(".vwl/gates.yaml"));
+    assert!(init_str.contains("Installed at .git/hooks/pre-commit"));
+
+    // Check files created
+    assert!(temp.path().join(".vwl/gates.yaml").exists());
+    assert!(temp.path().join(".vwl/project.yaml").exists());
+    assert!(temp.path().join(".git/hooks/pre-commit").exists());
+
+    // 2. Check vwl hook status
+    let hook_status = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["hook", "status"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(hook_status.status.success());
+    let hook_str = String::from_utf8_lossy(&hook_status.stdout);
+    assert!(hook_str.contains("INSTALLED & ACTIVE"));
+
+    // 3. Check vwl verify gates
+    let gates_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["verify", "gates"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(gates_out.status.success());
+    let gates_str = String::from_utf8_lossy(&gates_out.stdout);
+    assert!(gates_str.contains("VWL CONFIGURED VALIDATOR GATES"));
+    assert!(gates_str.contains("node-tests"));
+
+    // 4. Run vwl verify precommit (with an echo gate)
+    // Customise .vwl/gates.yaml with a deterministic echo gate
+    let custom_gates = r#"version: "1.0"
+project: "target-app"
+languages: ["typescript"]
+gates:
+  - name: "fast-precommit"
+    plane: "deterministic"
+    command: "echo 'precommit checks pass'"
+    precommit: true
+    timeout_secs: 10
+    description: "Fast gate"
+"#;
+    fs::write(temp.path().join(".vwl/gates.yaml"), custom_gates).unwrap();
+
+    let precommit_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["verify", "precommit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(precommit_out.status.success());
+    let precommit_str = String::from_utf8_lossy(&precommit_out.stdout);
+    assert!(precommit_str.contains("VWL PRE-COMMIT VALIDATOR GATES"));
+    assert!(precommit_str.contains("fast-precommit"));
+    assert!(precommit_str.contains("PASSED"));
+
+    // 5. Test vwl hook uninstall and reinstall
+    let uninst_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["hook", "uninstall"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(uninst_out.status.success());
+    assert!(!temp.path().join(".git/hooks/pre-commit").exists());
+
+    let reinst_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["hook", "install"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(reinst_out.status.success());
+    assert!(temp.path().join(".git/hooks/pre-commit").exists());
+}

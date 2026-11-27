@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use vwl_core::{
     decision::{DecisionEngine, DecisionOutcome},
     economics::EconomicLedger,
-    factory::{Challenge, ChangeProfile, RiskLevel, RiskProfile, VerificationPlan},
+    factory::{Challenge, ChangeProfile, GatesManifest, RiskLevel, RiskProfile, VerificationPlan},
     git::GitInspector,
     github::{resolve_github_token_with_source, GithubClient},
     graph::{Claim, DependencyKind, TaskDependency},
@@ -63,6 +63,22 @@ enum Commands {
     Gh {
         #[command(subcommand)]
         cmd: GhCommands,
+    },
+
+    /// Initialize VWL in current repository, auto-detecting language gates and git hooks
+    Init {
+        /// Do not install git pre-commit hook
+        #[arg(long)]
+        no_hooks: bool,
+        /// Overwrite existing .vwl/gates.yaml
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Manage VWL Git pre-commit hooks
+    Hook {
+        #[command(subcommand)]
+        cmd: HookCommands,
     },
 
     /// Manage and preflight agent execution harnesses (gemini, opencode, claude, copilot)
@@ -358,6 +374,29 @@ enum VerifyCommands {
         /// Challenge ID or subject WorkUnit
         id: String,
     },
+    /// Run fast pre-commit validator gates configured in .vwl/gates.yaml
+    Precommit {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect or execute all configured validator gates from .vwl/gates.yaml
+    Gates {
+        #[arg(long)]
+        json: bool,
+        /// Execute all gates sequentially and report results
+        #[arg(long)]
+        run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum HookCommands {
+    /// Install pre-commit validator gate hook into .git/hooks/pre-commit
+    Install,
+    /// Remove pre-commit validator gate hook from .git/hooks/pre-commit
+    Uninstall,
+    /// Inspect status of VWL Git hooks
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -650,6 +689,93 @@ fn main() -> Result<()> {
                     .unwrap_or("none (head is provisional)")
             );
         }
+
+        Commands::Init { no_hooks, force } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let vwl_dir = repo_root.join(".vwl");
+            fs::create_dir_all(&vwl_dir)?;
+
+            let gates_file = vwl_dir.join("gates.yaml");
+            let manifest = if gates_file.exists() && !force {
+                println!("Found existing .vwl/gates.yaml (use --force to regenerate)");
+                GatesManifest::load_or_detect(&repo_root)?
+            } else {
+                let m = GatesManifest::detect(&repo_root);
+                m.save(&repo_root)?;
+                println!("Auto-detected project languages: {:?}", m.languages);
+                println!(
+                    "Generated validator gates manifest at .vwl/gates.yaml ({} gates)",
+                    m.gates.len()
+                );
+                m
+            };
+
+            let hook_status = if no_hooks {
+                "Skipped (--no-hooks specified)"
+            } else {
+                match GitInspector::install_precommit_hook(&repo_root) {
+                    Ok(_) => "Installed at .git/hooks/pre-commit",
+                    Err(_) => "Failed installing pre-commit hook",
+                }
+            };
+
+            let project_yaml = vwl_dir.join("project.yaml");
+            if !project_yaml.exists() {
+                let manifest_content = format!(
+                    "name: \"{}\"\nrepository: \"\"\ndescription: \"VWL Decentralized Project\"\ntopics: [\"vwl-project\"]\nroles: []\n",
+                    manifest.project
+                );
+                let _ = fs::write(project_yaml, manifest_content);
+            }
+
+            println!("=== VWL REPOSITORY INITIALIZATION COMPLETE ===");
+            println!("  Project Name:      {}", manifest.project);
+            println!("  Detected Stack:    {:?}", manifest.languages);
+            println!("  Validator Gates:   {} configured", manifest.gates.len());
+            for g in &manifest.gates {
+                println!(
+                    "    - [{:?}] {} (cmd: '{}', precommit: {})",
+                    g.plane, g.name, g.command, g.precommit
+                );
+            }
+            println!("  Git Pre-Commit:    {}", hook_status);
+            println!("  Next Steps:");
+            println!("    1. Test pre-commit gates:  vwl verify precommit");
+            println!("    2. Initialize node key:    vwl node init --role developer");
+            println!("    3. Ingest task specs:      vwl task add <spec.yaml> --skeptic");
+        }
+
+        Commands::Hook { cmd } => match cmd {
+            HookCommands::Install => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let path = GitInspector::install_precommit_hook(&repo_root)?;
+                println!(
+                    "Successfully installed VWL pre-commit hook at {}",
+                    path.display()
+                );
+            }
+            HookCommands::Uninstall => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let removed = GitInspector::uninstall_precommit_hook(&repo_root)?;
+                if removed {
+                    println!("Successfully removed VWL pre-commit hook.");
+                } else {
+                    println!("No pre-commit hook found in .git/hooks/pre-commit.");
+                }
+            }
+            HookCommands::Status => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let installed = GitInspector::is_precommit_hook_installed(&repo_root);
+                println!(
+                    "VWL Pre-Commit Hook: {}",
+                    if installed {
+                        "INSTALLED & ACTIVE (.git/hooks/pre-commit)"
+                    } else {
+                        "NOT INSTALLED (Run 'vwl hook install' or 'vwl init')"
+                    }
+                );
+            }
+        },
 
         Commands::Report {
             gh_pages,
@@ -1156,6 +1282,87 @@ fn main() -> Result<()> {
                             if let Some(ref art_id) = ch.artifact_id {
                                 println!("    Verifier Artifact: {}", art_id);
                             }
+                        }
+                    }
+                }
+                VerifyCommands::Precommit { json } => {
+                    let manifest = GatesManifest::load_or_detect(&repo_root)?;
+                    let results = manifest.run_gates(&repo_root, true)?;
+                    let all_passed = results.iter().all(|r| r.passed);
+
+                    if json {
+                        let json_str = serde_json::to_string_pretty(&results)
+                            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                        println!("{}", json_str);
+                    } else {
+                        println!("=== [VWL PRE-COMMIT VALIDATOR GATES] ===");
+                        for r in &results {
+                            let status = if r.passed { "PASSED" } else { "FAILED" };
+                            println!(
+                                "  [{:?}] Gate '{}' -> {} ({}ms)",
+                                r.plane, r.name, status, r.duration_ms
+                            );
+                            if !r.passed {
+                                eprintln!("    Command: {}", r.command);
+                                if !r.stderr.is_empty() {
+                                    eprintln!("    Stderr:  {}", r.stderr.trim());
+                                }
+                                if !r.stdout.is_empty() {
+                                    eprintln!("    Stdout:  {}", r.stdout.trim());
+                                }
+                            }
+                        }
+                    }
+
+                    if !all_passed {
+                        return Err(VwlError::VerificationFailed(
+                            "Pre-commit validator gates failed. Fix violations before committing."
+                                .to_string(),
+                        ));
+                    }
+                    println!("All pre-commit validator gates passed.");
+                }
+                VerifyCommands::Gates { json, run } => {
+                    let manifest = GatesManifest::load_or_detect(&repo_root)?;
+
+                    if run {
+                        let results = manifest.run_gates(&repo_root, false)?;
+                        let all_passed = results.iter().all(|r| r.passed);
+
+                        if json {
+                            let json_str = serde_json::to_string_pretty(&results)
+                                .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                            println!("{}", json_str);
+                        } else {
+                            println!("=== [VWL VALIDATOR GATES RUN REPORT] ===");
+                            for r in &results {
+                                let status = if r.passed { "PASSED" } else { "FAILED" };
+                                println!(
+                                    "  [{:?}] {} (cmd: '{}') -> {} ({}ms)",
+                                    r.plane, r.name, r.command, status, r.duration_ms
+                                );
+                            }
+                        }
+                        if !all_passed {
+                            return Err(VwlError::VerificationFailed(
+                                "One or more validator gates failed".to_string(),
+                            ));
+                        }
+                    } else if json {
+                        let json_str = serde_json::to_string_pretty(&manifest)
+                            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                        println!("{}", json_str);
+                    } else {
+                        println!("=== [VWL CONFIGURED VALIDATOR GATES] ===");
+                        println!("Project:    {}", manifest.project);
+                        println!("Languages:  {:?}", manifest.languages);
+                        for g in &manifest.gates {
+                            println!(
+                                "  - [{:?}] {} (precommit: {}, timeout: {}s)",
+                                g.plane, g.name, g.precommit, g.timeout_secs
+                            );
+                            println!("      command: {}", g.command);
+                            println!("      desc:    {}", g.description);
                         }
                     }
                 }
@@ -1747,25 +1954,55 @@ fn main() -> Result<()> {
                     println!("  Harness Args:        {:?}", extra_args);
                 }
 
-                let proof = Proof::new_v22(
-                    &wu.candidate,
-                    ProofType::Work,
-                    Verdict::Pass,
-                    format!("acceptance-check --task {} --harness {}", wu.task, harness),
-                    Some("Independent Plane 0 verification passed".to_string()),
-                    Some("G0.6-DETERMINISTIC".to_string()),
-                    Some(VerificationPlane::Deterministic),
-                    Some(VisibilityProfile::InterfaceIntegration),
-                    Some("runtime-clean".to_string()),
-                )?;
-                ledger.append_proof(&proof)?;
-                println!(
-                    "  Structured Proof emitted: type={:?}, verdict={:?}",
-                    proof.r#type, proof.verdict
-                );
+                let manifest = GatesManifest::load_or_detect(&repo_root)?;
+                let gate_results = manifest.run_gates(&repo_root, true)?;
 
-                let decision =
-                    DecisionEngine::evaluate(&wu.candidate, &[proof], &[ProofType::Work]);
+                let mut proofs = Vec::new();
+                if gate_results.is_empty() {
+                    let proof = Proof::new_v22(
+                        &wu.candidate,
+                        ProofType::Work,
+                        Verdict::Pass,
+                        format!("acceptance-check --task {} --harness {}", wu.task, harness),
+                        Some("Independent Plane 0 verification passed".to_string()),
+                        Some("G0.6-DETERMINISTIC".to_string()),
+                        Some(VerificationPlane::Deterministic),
+                        Some(VisibilityProfile::InterfaceIntegration),
+                        Some("runtime-clean".to_string()),
+                    )?;
+                    ledger.append_proof(&proof)?;
+                    proofs.push(proof);
+                } else {
+                    for r in &gate_results {
+                        let verdict = if r.passed {
+                            Verdict::Pass
+                        } else {
+                            Verdict::Fail
+                        };
+                        let proof = Proof::new_v22(
+                            &wu.candidate,
+                            ProofType::Work,
+                            verdict,
+                            r.command.clone(),
+                            Some(format!(
+                                "Configured gate '{}' execution ({}ms)",
+                                r.name, r.duration_ms
+                            )),
+                            Some(r.name.clone()),
+                            Some(r.plane),
+                            Some(VisibilityProfile::InterfaceIntegration),
+                            Some("gates-manifest".to_string()),
+                        )?;
+                        ledger.append_proof(&proof)?;
+                        proofs.push(proof);
+                        println!(
+                            "  Structured Proof emitted: gate='{}', verdict={:?}, time={}ms",
+                            r.name, verdict, r.duration_ms
+                        );
+                    }
+                }
+
+                let decision = DecisionEngine::evaluate(&wu.candidate, &proofs, &[ProofType::Work]);
                 ledger.append_decision(&decision)?;
                 println!(
                     "  Decision Engine Outcome: {:?} (reason: {})",
@@ -2513,25 +2750,55 @@ fn run_worker_daemon(
                 );
                 println!("[Runner: Verifier Node] Zero-Chat Invariant: IMPLEMENTER CHAT BARRED (0 tokens)");
 
-                let proof = Proof::new_v22(
-                    &wu.candidate,
-                    ProofType::Work,
-                    Verdict::Pass,
-                    format!("acceptance-check --task {} --harness {}", wu.task, harness),
-                    Some("All acceptance criteria verified pass independently".to_string()),
-                    Some("G0.6-DETERMINISTIC".to_string()),
-                    Some(VerificationPlane::Deterministic),
-                    Some(VisibilityProfile::InterfaceIntegration),
-                    Some("runtime-clean".to_string()),
-                )?;
-                ledger.append_proof(&proof)?;
-                println!(
-                    "[Runner: Verifier Node] Proof recorded: Type {:?}, Verdict {:?}",
-                    proof.r#type, proof.verdict
-                );
+                let manifest = GatesManifest::load_or_detect(repo_root)?;
+                let gate_results = manifest.run_gates(repo_root, true)?;
 
-                let decision =
-                    DecisionEngine::evaluate(&wu.candidate, &[proof], &[ProofType::Work]);
+                let mut proofs = Vec::new();
+                if gate_results.is_empty() {
+                    let proof = Proof::new_v22(
+                        &wu.candidate,
+                        ProofType::Work,
+                        Verdict::Pass,
+                        format!("acceptance-check --task {} --harness {}", wu.task, harness),
+                        Some("All acceptance criteria verified pass independently".to_string()),
+                        Some("G0.6-DETERMINISTIC".to_string()),
+                        Some(VerificationPlane::Deterministic),
+                        Some(VisibilityProfile::InterfaceIntegration),
+                        Some("runtime-clean".to_string()),
+                    )?;
+                    ledger.append_proof(&proof)?;
+                    proofs.push(proof);
+                } else {
+                    for r in &gate_results {
+                        let verdict = if r.passed {
+                            Verdict::Pass
+                        } else {
+                            Verdict::Fail
+                        };
+                        let proof = Proof::new_v22(
+                            &wu.candidate,
+                            ProofType::Work,
+                            verdict,
+                            r.command.clone(),
+                            Some(format!(
+                                "Configured gate '{}' execution ({}ms)",
+                                r.name, r.duration_ms
+                            )),
+                            Some(r.name.clone()),
+                            Some(r.plane),
+                            Some(VisibilityProfile::InterfaceIntegration),
+                            Some("gates-manifest".to_string()),
+                        )?;
+                        ledger.append_proof(&proof)?;
+                        proofs.push(proof);
+                        println!(
+                            "[Runner: Verifier Node] Gate '{}' -> {:?} ({}ms)",
+                            r.name, verdict, r.duration_ms
+                        );
+                    }
+                }
+
+                let decision = DecisionEngine::evaluate(&wu.candidate, &proofs, &[ProofType::Work]);
                 ledger.append_decision(&decision)?;
                 println!(
                     "[Runner: Verifier Node] Deterministic Decision: {:?} ({})",
@@ -2694,26 +2961,60 @@ fn run_worker_daemon(
                 "[Runner] Executing independent zero-chat verifier on candidate commit {}...",
                 candidate_commit
             );
-            let proof = Proof::new_v22(
-                &candidate_commit,
-                ProofType::Work,
-                Verdict::Pass,
-                format!("acceptance-check --task {} --harness {}", task.id, harness),
-                Some("All acceptance criteria verified pass independently".to_string()),
-                Some("G0.6-DETERMINISTIC".to_string()),
-                Some(VerificationPlane::Deterministic),
-                Some(VisibilityProfile::InterfaceIntegration),
-                Some("runtime-clean".to_string()),
-            )?;
-            ledger.append_proof(&proof)?;
-            println!(
-                "[Runner] Proof recorded: Type {:?}, Verdict {:?}",
-                proof.r#type, proof.verdict
-            );
+            let manifest = GatesManifest::load_or_detect(repo_root)?;
+            let gate_results = manifest.run_gates(repo_root, true)?;
+
+            let mut proofs = Vec::new();
+            if gate_results.is_empty() {
+                let proof = Proof::new_v22(
+                    &candidate_commit,
+                    ProofType::Work,
+                    Verdict::Pass,
+                    format!("acceptance-check --task {} --harness {}", task.id, harness),
+                    Some("All acceptance criteria verified pass independently".to_string()),
+                    Some("G0.6-DETERMINISTIC".to_string()),
+                    Some(VerificationPlane::Deterministic),
+                    Some(VisibilityProfile::InterfaceIntegration),
+                    Some("runtime-clean".to_string()),
+                )?;
+                ledger.append_proof(&proof)?;
+                println!(
+                    "[Runner] Proof recorded: Type {:?}, Verdict {:?}",
+                    proof.r#type, proof.verdict
+                );
+                proofs.push(proof);
+            } else {
+                for r in &gate_results {
+                    let verdict = if r.passed {
+                        Verdict::Pass
+                    } else {
+                        Verdict::Fail
+                    };
+                    let proof = Proof::new_v22(
+                        &candidate_commit,
+                        ProofType::Work,
+                        verdict,
+                        r.command.clone(),
+                        Some(format!(
+                            "Configured gate '{}' execution ({}ms)",
+                            r.name, r.duration_ms
+                        )),
+                        Some(r.name.clone()),
+                        Some(r.plane),
+                        Some(VisibilityProfile::InterfaceIntegration),
+                        Some("gates-manifest".to_string()),
+                    )?;
+                    ledger.append_proof(&proof)?;
+                    println!(
+                        "[Runner] Proof recorded: Type {:?}, Verdict {:?}",
+                        proof.r#type, proof.verdict
+                    );
+                    proofs.push(proof);
+                }
+            }
 
             // Step 4: Decision Engine
-            let decision =
-                DecisionEngine::evaluate(&candidate_commit, &[proof], &[ProofType::Work]);
+            let decision = DecisionEngine::evaluate(&candidate_commit, &proofs, &[ProofType::Work]);
             ledger.append_decision(&decision)?;
             println!(
                 "[Runner] Deterministic Decision: {:?} ({})",

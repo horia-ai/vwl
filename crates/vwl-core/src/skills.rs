@@ -29,6 +29,11 @@ pub const SKILLS: &[SkillDef] = &[
         description: "Uniswap v3 concentrated liquidity pairing and Gate 10 public liquidity checks",
         content: "# DEX Liquidity Rules\n1 USD = 1,000 WORK (0.001 USD per WORK).\nPublic liquidity requires formal verification and decoupled floating rates.",
     },
+    SkillDef {
+        name: "repo-bootstrap-initializer",
+        description: "Autonomous agent skill to initialize VWL, inspect languages, generate .vwl/gates.yaml, and setup git pre-commit hooks",
+        content: "# VWL Repository Bootstrap & Initializer Protocol\n1. Inspect repository structure, toolchains, and package manifests.\n2. Run 'vwl init' to auto-detect languages and generate '.vwl/gates.yaml'.\n3. Verify '.git/hooks/pre-commit' is installed and executable.\n4. Initialize node identity with 'vwl node init --role <spec|developer|verifier>'.\n5. Run 'vwl verify precommit' to validate local baseline gates.\n6. Admit only falsifiable, unambiguous tasks via 'vwl task add --skeptic'.",
+    },
 ];
 
 pub fn list_skills() -> Vec<(&'static str, &'static str)> {
@@ -121,10 +126,13 @@ mod tests {
     #[test]
     fn test_list_skills() {
         let skills = list_skills();
-        assert_eq!(skills.len(), 4);
+        assert_eq!(skills.len(), 5);
         assert!(skills
             .iter()
             .any(|(name, _)| *name == "tdd-mutation-testing"));
+        assert!(skills
+            .iter()
+            .any(|(name, _)| *name == "repo-bootstrap-initializer"));
         assert!(skills.iter().any(|(name, _)| *name == "bounded-verifier"));
     }
 

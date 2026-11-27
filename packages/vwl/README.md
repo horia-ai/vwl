@@ -7,6 +7,12 @@ Official npm distribution package for the **Virtual Work Ledger (VWL) CLI**.
 Run any VWL command immediately without manual installation:
 
 ```bash
+# Initialize VWL in your repo (detects languages, sets up .vwl/gates.yaml & pre-commit hook)
+npx @horia-ai/vwl init
+
+# Run pre-commit validator gates
+npx @horia-ai/vwl verify precommit
+
 # Check repository ledger status
 npx @horia-ai/vwl status
 

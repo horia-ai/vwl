@@ -1,7 +1,7 @@
 use vwl_core::{
     factory::{
-        Challenge, ChangeProfile, RiskLevel, RiskProfile, ShadowTrafficContract, TestIntegrityGate,
-        VerificationPlan, VerifierArtifact, WiringGate,
+        Challenge, ChangeProfile, GateDefinition, GatesManifest, RiskLevel, RiskProfile,
+        ShadowTrafficContract, TestIntegrityGate, VerificationPlan, VerifierArtifact, WiringGate,
     },
     proof::{Proof, ProofType, Verdict, VerificationPlane},
 };
@@ -247,4 +247,98 @@ fn test_verification_plan_enforces_required_gates() {
         .unwrap_err()
         .to_string()
         .contains("Required gate 'mutation-targeted' has not passed"));
+}
+
+#[test]
+fn test_gates_manifest_detect_rust_and_node() {
+    let temp = tempfile::tempdir().unwrap();
+
+    // Create Cargo.toml and package.json
+    std::fs::write(
+        temp.path().join("Cargo.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(temp.path().join("tsconfig.json"), "{}\n").unwrap();
+    let pkg_json = r#"{
+  "name": "demo-node",
+  "scripts": {
+    "test": "vitest",
+    "lint": "eslint",
+    "test:mutation": "stryker run"
+  }
+}"#;
+    std::fs::write(temp.path().join("package.json"), pkg_json).unwrap();
+
+    let manifest = GatesManifest::detect(temp.path());
+    assert!(manifest.languages.contains(&"rust".to_string()));
+    assert!(manifest.languages.contains(&"typescript".to_string()));
+
+    // Verify gates
+    let gate_names: Vec<String> = manifest.gates.iter().map(|g| g.name.clone()).collect();
+    assert!(gate_names.contains(&"unit-tests".to_string()));
+    assert!(gate_names.contains(&"clippy-lint".to_string()));
+    assert!(gate_names.contains(&"format-check".to_string()));
+    assert!(gate_names.contains(&"node-tests".to_string()));
+    assert!(gate_names.contains(&"node-lint".to_string()));
+    assert!(gate_names.contains(&"typecheck".to_string()));
+    assert!(gate_names.contains(&"mutation-gate".to_string()));
+    assert!(gate_names.contains(&"skeptic-review".to_string()));
+
+    // Mutation gate should NOT be on precommit by default
+    let mutation_gate = manifest
+        .gates
+        .iter()
+        .find(|g| g.name == "mutation-gate")
+        .unwrap();
+    assert!(!mutation_gate.precommit);
+
+    // Save and load round-trip
+    let saved_path = manifest.save(temp.path()).unwrap();
+    assert!(saved_path.exists());
+
+    let loaded = GatesManifest::load_or_detect(temp.path()).unwrap();
+    assert_eq!(manifest, loaded);
+}
+
+#[test]
+fn test_gates_manifest_run_gates_execution() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest = GatesManifest {
+        version: "1.0".to_string(),
+        project: "test-run".to_string(),
+        languages: vec!["custom".to_string()],
+        gates: vec![
+            GateDefinition {
+                name: "echo-pass".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "echo 'hello passed'".to_string(),
+                precommit: true,
+                timeout_secs: 10,
+                description: "Passing command".to_string(),
+            },
+            GateDefinition {
+                name: "fail-gate".to_string(),
+                plane: VerificationPlane::Deterministic,
+                command: "sh -c 'exit 42'".to_string(),
+                precommit: false,
+                timeout_secs: 10,
+                description: "Failing non-precommit command".to_string(),
+            },
+        ],
+    };
+
+    // Run only precommit -> only echo-pass runs
+    let precommit_results = manifest.run_gates(temp.path(), true).unwrap();
+    assert_eq!(precommit_results.len(), 1);
+    assert!(precommit_results[0].passed);
+    assert_eq!(precommit_results[0].name, "echo-pass");
+    assert!(precommit_results[0].stdout.contains("hello passed"));
+
+    // Run all gates -> echo-pass passes, fail-gate fails
+    let all_results = manifest.run_gates(temp.path(), false).unwrap();
+    assert_eq!(all_results.len(), 2);
+    assert!(all_results[0].passed);
+    assert!(!all_results[1].passed);
+    assert_eq!(all_results[1].name, "fail-gate");
 }
