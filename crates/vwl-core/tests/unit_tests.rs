@@ -3,7 +3,7 @@ use vwl_core::{
     decision::{DecisionEngine, DecisionOutcome},
     ledger::LocalLedger,
     proof::{Proof, ProofType, Verdict},
-    task::Task,
+    task::{Task, TaskSkeptic},
     work_unit::WorkUnit,
 };
 
@@ -137,4 +137,83 @@ fn test_local_ledger_append_and_idempotency() {
     let wu2 = WorkUnit::new("T-001", "commit_1", "base_diff").unwrap();
     ledger.append_work_unit(&wu1).expect("append wu1");
     assert!(ledger.append_work_unit(&wu2).is_err());
+}
+
+#[test]
+fn test_task_skeptic_review_pass() {
+    let task = Task::new(
+        "T-SPEC-001",
+        "Implement deterministic JSON serialization for state ledger",
+        vec![
+            "cargo test --test ledger_tests".to_string(),
+            "cargo clippy --all-targets --all-features -- -D warnings".to_string(),
+        ],
+        "c0_canonical_base_sha",
+    )
+    .unwrap();
+
+    let verdict = TaskSkeptic::review(&task);
+    assert!(verdict.passed);
+    assert_eq!(verdict.task_id, "T-SPEC-001");
+    assert!(verdict.objections.is_empty());
+}
+
+#[test]
+fn test_task_skeptic_review_subjective_criteria_fail() {
+    let task = Task::new(
+        "T-SPEC-002",
+        "Refactor auth logic",
+        vec![
+            "clean code that feels good".to_string(),
+            "well tested and fast enough".to_string(),
+        ],
+        "c0_canonical_base_sha",
+    )
+    .unwrap();
+
+    let verdict = TaskSkeptic::review(&task);
+    assert!(!verdict.passed);
+    assert!(verdict.objections.len() >= 3);
+    assert!(verdict.objections.iter().any(|o| o.contains("clean code")));
+    assert!(verdict.objections.iter().any(|o| o.contains("well tested")));
+    assert!(verdict.objections.iter().any(|o| o.contains("fast enough")));
+}
+
+#[test]
+fn test_task_skeptic_review_conversational_cue_fail() {
+    let task = Task::new(
+        "T-SPEC-003",
+        "Implement the retry policy as discussed in our previous chat",
+        vec!["cargo test -p vwl-core".to_string()],
+        "c0_canonical_base_sha",
+    )
+    .unwrap();
+
+    let verdict = TaskSkeptic::review(&task);
+    assert!(!verdict.passed);
+    assert!(verdict
+        .objections
+        .iter()
+        .any(|o| o.contains("as discussed") || o.contains("previous chat")));
+}
+
+#[test]
+fn test_task_skeptic_review_missing_criteria_and_base_fail() {
+    let task = Task {
+        id: "T-SPEC-004".to_string(),
+        objective: "Do some work".to_string(),
+        acceptance: vec![],
+        base: "".to_string(),
+    };
+
+    let verdict = TaskSkeptic::review(&task);
+    assert!(!verdict.passed);
+    assert!(verdict
+        .objections
+        .iter()
+        .any(|o| o.contains("No acceptance criteria")));
+    assert!(verdict
+        .objections
+        .iter()
+        .any(|o| o.contains("Invalid or missing canonical base commit")));
 }

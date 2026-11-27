@@ -54,5 +54,5 @@ pub use repometer::{
     OutcomeSeverity, OutcomeType, RepometerEngine, RepometerMetrics,
 };
 pub use skills::{install_skill, list_skills, SkillDef, SKILLS};
-pub use task::Task;
+pub use task::{SkepticReviewVerdict, Task, TaskSkeptic};
 pub use work_unit::{CommitEntry, WorkUnit};

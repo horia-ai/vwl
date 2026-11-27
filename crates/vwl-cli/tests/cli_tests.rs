@@ -983,3 +983,196 @@ fn test_cli_v23_incident_and_sla_commands() {
     assert!(repair_str.contains("Started repair task for WorkUnit 'cand_root_wu'"));
     assert!(repair_str.contains("Erected repair barrier"));
 }
+
+#[test]
+fn test_cli_spec_writer_and_role_nodes() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "tester@vwl.network"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "VWL Tester"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    fs::write(temp.path().join("README.md"), "# Role Nodes Test\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let head_output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    let head_sha = String::from_utf8_lossy(&head_output.stdout)
+        .trim()
+        .to_string();
+
+    // 1. Spec-Writer Node: Review & Ingest with Skeptic Gate
+    let valid_task_yaml = format!(
+        r#"id: "T-SPEC-CLI-1"
+objective: "Implement deterministic CLI command"
+acceptance: ["cargo test --test cli_tests"]
+base: "{}"
+"#,
+        head_sha
+    );
+    let valid_task_path = temp.path().join("task_valid.yaml");
+    fs::write(&valid_task_path, &valid_task_yaml).unwrap();
+
+    // vwl task review valid task
+    let rev_valid = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "review", valid_task_path.to_str().unwrap()])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(rev_valid.status.success());
+    let rev_valid_str = String::from_utf8_lossy(&rev_valid.stdout);
+    assert!(rev_valid_str.contains("VERDICT: PASSED"));
+
+    // vwl task review --json
+    let rev_json = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "task",
+            "review",
+            valid_task_path.to_str().unwrap(),
+            "--json",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(rev_json.status.success());
+    let rev_json_str = String::from_utf8_lossy(&rev_json.stdout);
+    assert!(rev_json_str.contains("\"passed\": true"));
+
+    // Skeptic rejection of subjective criteria and conversational cue
+    let bad_task_yaml = format!(
+        r#"id: "T-SPEC-CLI-2"
+objective: "Make the code clean as discussed in our previous chat"
+acceptance: ["clean code that works well"]
+base: "{}"
+"#,
+        head_sha
+    );
+    let bad_task_path = temp.path().join("task_bad.yaml");
+    fs::write(&bad_task_path, &bad_task_yaml).unwrap();
+
+    let rev_bad = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "review", bad_task_path.to_str().unwrap()])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(!rev_bad.status.success());
+    let rev_bad_str = String::from_utf8_lossy(&rev_bad.stdout);
+    assert!(rev_bad_str.contains("VERDICT: FAILED"));
+    assert!(rev_bad_str.contains("clean code"));
+    assert!(rev_bad_str.contains("as discussed"));
+
+    // vwl task add --skeptic on bad task -> rejected
+    let add_bad = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "add", bad_task_path.to_str().unwrap(), "--skeptic"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(!add_bad.status.success());
+    let add_bad_err = String::from_utf8_lossy(&add_bad.stderr);
+    assert!(add_bad_err.contains("rejected by Skeptic Review Gate"));
+
+    // vwl task add --skeptic on valid task -> admitted
+    let add_valid = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "task",
+            "add",
+            valid_task_path.to_str().unwrap(),
+            "--skeptic",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(add_valid.status.success());
+    let add_valid_str = String::from_utf8_lossy(&add_valid.stdout);
+    assert!(add_valid_str.contains("Skeptic Review Gate: PASSED"));
+
+    // 2. Developer Node: Bounded Execution (WU-G0-010)
+    let dev_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["worker", "developer", "T-SPEC-CLI-1", "--harness", "gemini"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(dev_out.status.success());
+    let dev_str = String::from_utf8_lossy(&dev_out.stdout);
+    assert!(dev_str.contains("ZERO CONVERSATIONAL HISTORY"));
+    assert!(dev_str.contains("Candidate WorkUnit produced"));
+
+    // 3. Verifier Node: Independent Verification Factory Gate (WU-G0-011)
+    let prefix = format!(
+        "cand_t_spec_cli_1_{}",
+        head_sha.chars().take(8).collect::<String>()
+    );
+    let val_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["worker", "verifier", &prefix, "--harness", "gemini"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(val_out.status.success());
+    let val_str = String::from_utf8_lossy(&val_out.stdout);
+    assert!(val_str.contains("IMPLEMENTER CHAT LOGS STRICTLY BARRED"));
+    assert!(val_str.contains("Candidate Isolation"));
+    assert!(val_str.contains("Structured Proof emitted"));
+    assert!(val_str.contains("Decision Engine Outcome"));
+
+    // 4. Role-based Autonomous Runner (Role Developer then Role Verifier)
+    let task_3_yaml = format!(
+        r#"id: "T-SPEC-CLI-3"
+objective: "Implement role-based runner test"
+acceptance: ["cargo test"]
+base: "{}"
+"#,
+        head_sha
+    );
+    let task_3_path = temp.path().join("task_3.yaml");
+    fs::write(&task_3_path, &task_3_yaml).unwrap();
+    let add_3 = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "add", task_3_path.to_str().unwrap(), "--skeptic"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(add_3.status.success());
+
+    // Run as role: developer
+    let run_dev = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["worker", "run", "--role", "developer", "--max-tasks", "1"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(run_dev.status.success());
+    let run_dev_str = String::from_utf8_lossy(&run_dev.stdout);
+    assert!(run_dev_str.contains("Role: developer"));
+    assert!(run_dev_str.contains("Handing off to Validator"));
+
+    // Run as role: verifier
+    let run_val = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["worker", "run", "--role", "verifier", "--max-tasks", "1"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(run_val.status.success());
+    let run_val_str = String::from_utf8_lossy(&run_val.stdout);
+    assert!(run_val_str.contains("Role: verifier"));
+    assert!(run_val_str.contains("Completed validation for candidate"));
+}
