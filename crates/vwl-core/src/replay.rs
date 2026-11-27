@@ -13,12 +13,15 @@ pub struct ReplayState {
     pub canonical_head: Option<String>,
     pub frontier_tasks: Vec<String>,
     pub active_claims: Vec<String>,
+    pub total_outcomes: usize,
+    pub active_regressions: Vec<String>,
 }
 
 pub struct ReplayEngine;
 
 impl ReplayEngine {
-    /// Reconstructs authoritative state from Git + Ledger (WU-G0-008 & WU-G05-012).
+    /// Reconstructs authoritative state from Git + Ledger across all four VWL graphs:
+    /// Intent, Provenance, Evidence, and Impact (WU-G0-008, WU-G05-012, WU-G07-009).
     /// Pure functional replay: no reliance on in-memory state or background services.
     /// Fails deterministically if any cycle or unresolvable authority divergence occurs.
     pub fn replay(repo_root: &Path) -> Result<ReplayState> {
@@ -55,12 +58,24 @@ impl ReplayEngine {
         let mut active_claims: Vec<String> = graph.claims.keys().cloned().collect();
         active_claims.sort();
 
+        // Impact Graph: Outcomes & Regressions
+        let outcomes = ledger.get_outcomes().unwrap_or_default();
+        let mut active_regressions = Vec::new();
+        for o in &outcomes {
+            if o.outcome_type == crate::repometer::OutcomeType::Regression {
+                active_regressions.push(o.id.clone());
+            }
+        }
+        active_regressions.sort();
+
         Ok(ReplayState {
             total_tasks: graph.tasks.len(),
             confirmed_work_units: confirmed_wus,
             canonical_head: repo_info.canonical_base.or(Some(repo_info.head_sha)),
             frontier_tasks: frontier_task_ids,
             active_claims,
+            total_outcomes: outcomes.len(),
+            active_regressions,
         })
     }
 }

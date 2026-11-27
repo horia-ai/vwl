@@ -16,6 +16,7 @@ use vwl_core::{
     ledger::LocalLedger,
     proof::{Proof, ProofType, Verdict, VerificationPlane, VisibilityProfile},
     replay::ReplayEngine,
+    repometer::{ImpactGraph, Outcome, OutcomeSeverity, OutcomeType, RepometerEngine},
     skills,
     task::Task,
     verify_signature,
@@ -180,6 +181,46 @@ enum Commands {
         #[command(subcommand)]
         cmd: VerifyCommands,
     },
+
+    /// Repometer evidence and code-lineage coverage bound to canonical tree (Gate 0.7)
+    Repometer {
+        #[arg(long)]
+        tree: Option<String>,
+        #[arg(long)]
+        dimension: Option<String>,
+        #[arg(long)]
+        explain: bool,
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Manage post-confirmation outcomes, attributions, and impact (Gate 0.7)
+    Outcome {
+        #[command(subcommand)]
+        cmd: OutcomeCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum OutcomeCommands {
+    /// List all recorded outcomes in the ledger
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Record a post-confirmation outcome (regression, observation, amendment, benchmark)
+    Add {
+        id: String,
+        subject: String,
+        #[arg(long, default_value = "regression")]
+        r#type: String,
+        #[arg(long, default_value = "high")]
+        severity: String,
+        #[arg(long)]
+        evidence: String,
+    },
+    /// Assess impact of an outcome on dependent tasks
+    Impact { outcome_id: String },
 }
 
 #[derive(Subcommand)]
@@ -622,6 +663,8 @@ fn main() -> Result<()> {
             );
             println!("  Work Frontier (Ready): {:?}", state.frontier_tasks);
             println!("  Active Claims:        {:?}", state.active_claims);
+            println!("  Total Outcomes:       {}", state.total_outcomes);
+            println!("  Active Regressions:   {:?}", state.active_regressions);
         }
 
         Commands::Frontier { json } => {
@@ -929,6 +972,172 @@ fn main() -> Result<()> {
                             if let Some(ref art_id) = ch.artifact_id {
                                 println!("    Verifier Artifact: {}", art_id);
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Repometer {
+            tree,
+            dimension,
+            explain,
+            json,
+        } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let metrics = RepometerEngine::calculate(&repo_root, tree.as_deref())?;
+
+            if json {
+                let json_str = serde_json::to_string_pretty(&metrics)
+                    .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                println!("{}", json_str);
+            } else if explain {
+                println!("{}", metrics.explain());
+            } else {
+                println!("=== VWL REPOMETER (Evidence & Lineage Coverage) ===");
+                println!("  Canonical Tree:             {}", metrics.canonical_tree);
+                println!("  Methodology:                {}", metrics.methodology);
+                println!("  Denominator LOC:            {}", metrics.denominator_loc);
+                if let Some(ref dim) = dimension {
+                    match dim.to_lowercase().as_str() {
+                        "attributed" => println!("  Ledger-Attributed:          {:.1}%", metrics.ledger_attributed_pct),
+                        "verified" => println!("  Independently Verified:     {:.1}%", metrics.independently_verified_pct),
+                        "unit" => println!("  Unit-Constrained:           {:.1}%", metrics.unit_constrained_pct),
+                        "mutation" => println!("  Mutation-Assessed:          {:.1}%", metrics.mutation_assessed_pct),
+                        "wiring" => println!("  Wiring-Verified:            {:.1}%", metrics.wiring_verified_pct),
+                        "surviving" => println!("  Surviving Lineage:          {:.1}%", metrics.surviving_pct),
+                        _ => println!("  Unknown dimension '{}'. Run without --dimension or use: attributed, verified, unit, mutation, wiring, surviving", dim),
+                    }
+                } else {
+                    println!(
+                        "  Ledger-Attributed:          {:.1}%",
+                        metrics.ledger_attributed_pct
+                    );
+                    println!(
+                        "  Independently Verified:     {:.1}%",
+                        metrics.independently_verified_pct
+                    );
+                    println!(
+                        "  Unit-Constrained:           {:.1}%",
+                        metrics.unit_constrained_pct
+                    );
+                    println!(
+                        "  Mutation-Assessed:          {:.1}%",
+                        metrics.mutation_assessed_pct
+                    );
+                    println!(
+                        "  Wiring-Verified:            {:.1}%",
+                        metrics.wiring_verified_pct
+                    );
+                    println!(
+                        "  Surviving Code Lineage:     {:.1}%",
+                        metrics.surviving_pct
+                    );
+                    println!("  Superseded LOC:             {}", metrics.superseded_loc);
+                }
+                println!("  Overall Confidence:         {}", metrics.confidence);
+            }
+        }
+
+        Commands::Outcome { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            let ledger = LocalLedger::new(&repo_root)?;
+            match cmd {
+                OutcomeCommands::List { json } => {
+                    let outcomes = ledger.get_outcomes()?;
+                    if json {
+                        let json_str = serde_json::to_string_pretty(&outcomes)
+                            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                        println!("{}", json_str);
+                    } else {
+                        println!("VWL Ledger Outcomes ({} recorded):", outcomes.len());
+                        if outcomes.is_empty() {
+                            println!("  (No post-confirmation outcomes recorded)");
+                        } else {
+                            for o in outcomes {
+                                println!(
+                                    "  * [{:<12}] {:<18} Subject: {:<15} Severity: {:?}",
+                                    format!("{:?}", o.outcome_type).to_lowercase(),
+                                    o.id,
+                                    o.subject,
+                                    o.severity
+                                );
+                                println!("    Evidence: {}", o.evidence);
+                            }
+                        }
+                    }
+                }
+                OutcomeCommands::Add {
+                    id,
+                    subject,
+                    r#type,
+                    severity,
+                    evidence,
+                } => {
+                    let ot = match r#type.to_lowercase().as_str() {
+                        "regression" => OutcomeType::Regression,
+                        "observation" => OutcomeType::Observation,
+                        "amendment" | "verificationamendment" => OutcomeType::VerificationAmendment,
+                        "benchmark" => OutcomeType::Benchmark,
+                        other => {
+                            return Err(VwlError::LedgerError(format!(
+                                "Invalid outcome type '{}'. Use: regression, observation, amendment, benchmark",
+                                other
+                            )));
+                        }
+                    };
+                    let sev = match severity.to_lowercase().as_str() {
+                        "low" => OutcomeSeverity::Low,
+                        "medium" => OutcomeSeverity::Medium,
+                        "high" => OutcomeSeverity::High,
+                        "critical" => OutcomeSeverity::Critical,
+                        other => {
+                            return Err(VwlError::LedgerError(format!(
+                                "Invalid outcome severity '{}'. Use: low, medium, high, critical",
+                                other
+                            )));
+                        }
+                    };
+                    let now = get_now_secs();
+                    let outcome = Outcome::new(&id, &subject, ot, sev, &evidence, now)?;
+                    ledger.append_outcome(&outcome)?;
+                    println!(
+                        "Successfully recorded outcome '{}' for subject '{}' (Type: {:?}, Severity: {:?})",
+                        id, subject, ot, sev
+                    );
+                }
+                OutcomeCommands::Impact { outcome_id } => {
+                    let outcomes = ledger.get_outcomes()?;
+                    let outcome =
+                        outcomes
+                            .iter()
+                            .find(|o| o.id == outcome_id)
+                            .ok_or_else(|| {
+                                VwlError::LedgerError(format!(
+                                    "Outcome '{}' not found in ledger",
+                                    outcome_id
+                                ))
+                            })?;
+
+                    let graph = ledger.get_task_graph()?;
+                    let cone = graph.get_affected_cone(&outcome.subject);
+                    let mut cone_vec: Vec<String> = cone.into_iter().collect();
+                    cone_vec.sort();
+                    let assessments = ImpactGraph::assess_impact(outcome, &cone_vec);
+
+                    println!(
+                        "Impact Assessment for Outcome '{}' (Subject: {}, Severity: {:?}):",
+                        outcome.id, outcome.subject, outcome.severity
+                    );
+                    if assessments.is_empty() {
+                        println!("  (No downstream dependent tasks affected)");
+                    } else {
+                        for a in assessments {
+                            println!(
+                                "  - Target Task: {:<15} Impact: {:?}",
+                                a.target_task, a.state
+                            );
+                            println!("    Reason:      {}", a.reason);
                         }
                     }
                 }

@@ -3,6 +3,7 @@ use crate::error::{Result, VwlError};
 use crate::factory::{Challenge, VerificationPlan, VerifierArtifact};
 use crate::graph::{Claim, TaskDependency, TaskGraph};
 use crate::proof::Proof;
+use crate::repometer::{Attribution, Outcome};
 use crate::task::Task;
 use crate::work_unit::WorkUnit;
 use std::fs;
@@ -24,6 +25,8 @@ impl LocalLedger {
         fs::create_dir_all(root_dir.join("plans"))?;
         fs::create_dir_all(root_dir.join("artifacts"))?;
         fs::create_dir_all(root_dir.join("challenges"))?;
+        fs::create_dir_all(root_dir.join("outcomes"))?;
+        fs::create_dir_all(root_dir.join("attributions"))?;
 
         Ok(Self { root_dir })
     }
@@ -381,5 +384,66 @@ impl LocalLedger {
         }
         challenges.sort_by(|a, b| a.id.cmp(&b.id));
         Ok(challenges)
+    }
+
+    pub fn append_outcome(&self, outcome: &Outcome) -> Result<()> {
+        let safe_id = outcome.id.replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("outcomes")
+            .join(format!("{}.yaml", safe_id));
+        let yaml = serde_yaml::to_string(outcome)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(file_path, yaml)?;
+        Ok(())
+    }
+
+    pub fn get_outcomes(&self) -> Result<Vec<Outcome>> {
+        let mut outcomes = Vec::new();
+        let out_dir = self.root_dir.join("outcomes");
+        if out_dir.exists() {
+            for entry in fs::read_dir(out_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    let out: Outcome = serde_yaml::from_str(&content)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    outcomes.push(out);
+                }
+            }
+        }
+        outcomes.sort_by_key(|a| a.timestamp);
+        Ok(outcomes)
+    }
+
+    pub fn append_attribution(&self, attribution: &Attribution) -> Result<()> {
+        let safe_id = format!("{}_{}", attribution.outcome_id, attribution.target_node)
+            .replace(['/', '\\', ':'], "_");
+        let file_path = self
+            .root_dir
+            .join("attributions")
+            .join(format!("{}.yaml", safe_id));
+        let yaml = serde_yaml::to_string(attribution)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        fs::write(file_path, yaml)?;
+        Ok(())
+    }
+
+    pub fn get_attributions(&self) -> Result<Vec<Attribution>> {
+        let mut attributions = Vec::new();
+        let attr_dir = self.root_dir.join("attributions");
+        if attr_dir.exists() {
+            for entry in fs::read_dir(attr_dir)? {
+                let entry = entry?;
+                if entry.path().extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(entry.path())?;
+                    let attr: Attribution = serde_yaml::from_str(&content)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    attributions.push(attr);
+                }
+            }
+        }
+        attributions.sort_by(|a, b| a.outcome_id.cmp(&b.outcome_id));
+        Ok(attributions)
     }
 }

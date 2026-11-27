@@ -711,3 +711,149 @@ fn test_cli_verify_plan_and_run() {
     assert!(run_str.contains("Executing Verification Factory on WorkUnit 'cand_candidate_001'"));
     assert!(run_str.contains("Verification Decision: Confirmed"));
 }
+
+#[test]
+fn test_cli_repometer_and_outcome_workflow() {
+    let temp = tempfile::tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git init");
+    Command::new("git")
+        .args(["config", "user.email", "repometer@vwl.network"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git config email");
+    Command::new("git")
+        .args(["config", "user.name", "Repometer Tester"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git config name");
+    fs::write(temp.path().join("README.md"), "# Repometer CLI Test\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(temp.path())
+        .output()
+        .expect("git add");
+    Command::new("git")
+        .args(["commit", "-m", "init repometer test"])
+        .current_dir(temp.path())
+        .output()
+        .expect("git commit");
+
+    // Ingest task
+    let task_file = temp.path().join("task.yaml");
+    fs::write(
+        &task_file,
+        "id: TASK-REPOMETER-01\nobjective: Repometer test\nacceptance: [pass]\nbase: c0\n",
+    )
+    .unwrap();
+    let task_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["task", "add", task_file.to_str().unwrap()])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(task_out.status.success());
+
+    // Submit WorkUnit
+    let submit_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "submit",
+            "TASK-REPOMETER-01",
+            "--candidate",
+            "cand_repometer_01",
+            "--base",
+            "c0",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(submit_out.status.success());
+
+    // Verify Run to produce decision
+    let verify_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["verify", "run", "cand_repometer_01"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(verify_out.status.success());
+
+    // 1. Test 'vwl repometer'
+    let repometer_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["repometer"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(repometer_out.status.success());
+    let repometer_str = String::from_utf8_lossy(&repometer_out.stdout);
+    assert!(repometer_str.contains("VWL REPOMETER (Evidence & Lineage Coverage)"));
+    assert!(repometer_str.contains("Canonical Tree:"));
+    assert!(repometer_str.contains("Ledger-Attributed:"));
+    assert!(repometer_str.contains("Independently Verified:"));
+    assert!(repometer_str.contains("Overall Confidence:"));
+
+    // 2. Test 'vwl repometer --explain'
+    let repometer_explain_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["repometer", "--explain"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(repometer_explain_out.status.success());
+    let explain_str = String::from_utf8_lossy(&repometer_explain_out.stdout);
+    assert!(explain_str.contains("VWL Repometer Evidence Coverage"));
+    assert!(explain_str.contains("Methodology: vwl-v2.2-lineage-and-evidence-coverage"));
+
+    // 3. Test 'vwl repometer --json'
+    let repometer_json_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["repometer", "--json"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(repometer_json_out.status.success());
+    let json_str = String::from_utf8_lossy(&repometer_json_out.stdout);
+    assert!(json_str.contains("\"methodology\": \"vwl-v2.2-lineage-and-evidence-coverage\""));
+
+    // 4. Test 'vwl outcome add'
+    let outcome_add_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "outcome",
+            "add",
+            "O-CLI-REGRESS-1",
+            "cand_repometer_01",
+            "--type",
+            "regression",
+            "--severity",
+            "high",
+            "--evidence",
+            "Memory leak found under load test",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(outcome_add_out.status.success());
+    let outcome_add_str = String::from_utf8_lossy(&outcome_add_out.stdout);
+    assert!(outcome_add_str.contains("Successfully recorded outcome 'O-CLI-REGRESS-1'"));
+
+    // 5. Test 'vwl outcome list'
+    let outcome_list_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["outcome", "list"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(outcome_list_out.status.success());
+    let outcome_list_str = String::from_utf8_lossy(&outcome_list_out.stdout);
+    assert!(outcome_list_str.contains("O-CLI-REGRESS-1"));
+    assert!(outcome_list_str.contains("regression"));
+    assert!(outcome_list_str.contains("cand_repometer_01"));
+
+    // 6. Test 'vwl outcome impact'
+    let outcome_impact_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["outcome", "impact", "O-CLI-REGRESS-1"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    assert!(outcome_impact_out.status.success());
+    let outcome_impact_str = String::from_utf8_lossy(&outcome_impact_out.stdout);
+    assert!(outcome_impact_str.contains("Impact Assessment for Outcome 'O-CLI-REGRESS-1'"));
+}
