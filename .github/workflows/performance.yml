@@ -1,0 +1,22 @@
+name: Performance & Benchmark Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  performance-gate:
+    name: Throughput & Latency Regression Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Performance Benchmark Tests (Release)
+        run: |
+          cargo test -p vwl-core --test performance_tests --release -- --nocapture
