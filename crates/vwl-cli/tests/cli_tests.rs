@@ -1938,3 +1938,164 @@ fn test_cli_bootstrap_ci_workflow() {
     let ci_content = fs::read_to_string(ci_file).unwrap();
     assert!(ci_content.contains("VWL Verification Gates"));
 }
+
+#[test]
+fn test_cli_spec_split_subtasks() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "spec",
+            "split",
+            "TASK-SPLIT-10",
+            "--subtasks",
+            "- [ ] Subtask one, - [ ] Subtask two, - [ ] Subtask three",
+            "--admit",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl spec split");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("SPLIT TASK 'TASK-SPLIT-10' INTO 3 SUBTASKS"));
+    assert!(stdout.contains("Subtask TASK-SPLIT-10-1"));
+    assert!(stdout.contains("Subtask TASK-SPLIT-10-2"));
+    assert!(stdout.contains("Subtask TASK-SPLIT-10-3"));
+
+    assert!(temp
+        .path()
+        .join(".vwl/ledger/tasks/TASK-SPLIT-10-1.yaml")
+        .exists());
+    assert!(temp
+        .path()
+        .join(".vwl/ledger/tasks/TASK-SPLIT-10-2.yaml")
+        .exists());
+    assert!(temp
+        .path()
+        .join(".vwl/ledger/tasks/TASK-SPLIT-10-3.yaml")
+        .exists());
+}
+
+#[test]
+fn test_cli_wallet_deposit_and_payout() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // 1. Deposit funds into project escrow
+    let deposit_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "wallet",
+            "deposit",
+            "--project-id",
+            "proj-escrow-99",
+            "--amount-usd",
+            "250",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl wallet deposit");
+
+    assert!(deposit_out.status.success());
+    let dep_str = String::from_utf8_lossy(&deposit_out.stdout);
+    assert!(dep_str.contains("VWL WALLET DEPOSIT SUCCESSFUL"));
+    assert!(dep_str.contains("Target Project:   proj-escrow-99"));
+    assert!(dep_str.contains("Deposited USD:    $250.00 USD"));
+    assert!(dep_str.contains("Escrow Credited:  250000 WORK"));
+
+    // 2. Initialize node identity
+    let init_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "node",
+            "init",
+            "--role",
+            "developer",
+            "--name",
+            "Test Worker",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl node init");
+    assert!(init_out.status.success());
+
+    // 3. Request payout (should handle zero liquid balance gracefully)
+    let payout_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["wallet", "payout"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl wallet payout");
+
+    assert!(payout_out.status.success());
+    let payout_str = String::from_utf8_lossy(&payout_out.stdout);
+    assert!(payout_str.contains("VWL WALLET PAYOUT"));
+    assert!(payout_str.contains("Liquid Balance:   0 WORK ($0.00 USD)"));
+}
+
+#[test]
+fn test_cli_verifier_roll_forward_auto_repair() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Configure failing gate in .vwl/gates.yaml
+    let vwl_dir = temp.path().join(".vwl");
+    fs::create_dir_all(&vwl_dir).unwrap();
+    let gates_yaml = r#"version: "1.0"
+project: "test-failing"
+languages: ["rust"]
+gates:
+  - name: "failing-test-gate"
+    plane: deterministic
+    command: "false"
+    precommit: true
+    timeout_secs: 60
+    description: "Intentional failure gate"
+"#;
+    fs::write(vwl_dir.join("gates.yaml"), gates_yaml).unwrap();
+
+    // Create candidate WorkUnit directly
+    let wu_dir = temp.path().join(".vwl/ledger/work_units");
+    fs::create_dir_all(&wu_dir).unwrap();
+    let wu_yaml = r#"task: "TASK-REJECT-01"
+commit: "cand_fail_sha_999"
+base: "base_sha_000"
+candidate: "cand_fail_sha_999"
+commits:
+  - sha: "cand_fail_sha_999"
+    role: "implementation"
+    actor: "dev-node"
+"#;
+    fs::write(wu_dir.join("cand_fail_sha_999.yaml"), wu_yaml).unwrap();
+
+    // Run verifier on candidate
+    let verifier_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["verifier", "cand_fail_sha_999"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl verifier");
+
+    assert!(verifier_out.status.success());
+    let verifier_str = String::from_utf8_lossy(&verifier_out.stdout);
+    assert!(verifier_str.contains("Verification REJECTED"));
+    assert!(verifier_str.contains("Triggering Roll-Forward Auto-Repair task generation"));
+
+    // Verify incident was logged and repair task was admitted
+    let incidents = temp.path().join(".vwl/ledger/incidents");
+    assert!(incidents.exists());
+    let repair_spec = temp
+        .path()
+        .join(".vwl/ledger/tasks/REPAIR-INC-cand_fail_sh.yaml");
+    assert!(repair_spec.exists());
+}
