@@ -79,6 +79,9 @@ enum Commands {
         /// Stage and commit initial bootstrap configuration to Git
         #[arg(long)]
         commit: bool,
+        /// Generate GitHub Actions CI verification workflow (.github/workflows/vwl-verify.yml)
+        #[arg(long)]
+        ci: bool,
     },
 
     /// Fully bootstrap repository: detect stack, configure and validate static gates, install hooks and skills, and create node identity
@@ -92,6 +95,9 @@ enum Commands {
         /// Stage and commit initial bootstrap configuration to Git
         #[arg(long)]
         commit: bool,
+        /// Generate GitHub Actions CI verification workflow (.github/workflows/vwl-verify.yml)
+        #[arg(long)]
+        ci: bool,
     },
 
     /// Manage VWL Git pre-commit hooks
@@ -147,7 +153,12 @@ enum Commands {
     #[command(alias = "developer")]
     Dev {
         /// Optional specific task ID; if omitted, auto-discovers next ready task from frontier or opens interactive chat
+        #[arg(long = "task", short = 't')]
         task_id: Option<String>,
+
+        /// Target specific GitHub issue number (e.g. --issue 235)
+        #[arg(long = "issue", short = 'i')]
+        issue: Option<u64>,
 
         /// Target harness: opencode, claude, gemini, copilot (default: opencode)
         #[arg(long, default_value = "opencode")]
@@ -171,6 +182,14 @@ enum Commands {
     Verifier {
         /// Optional specific candidate commit SHA; if omitted, auto-discovers next unverified candidate from ledger
         commit: Option<String>,
+
+        /// Target specific task ID to verify
+        #[arg(long = "task", short = 't')]
+        task: Option<String>,
+
+        /// Target specific GitHub issue number to verify (e.g. --issue 235)
+        #[arg(long = "issue", short = 'i')]
+        issue: Option<u64>,
 
         /// Target harness: opencode, claude, gemini, copilot (default: opencode)
         #[arg(long, default_value = "opencode")]
@@ -196,6 +215,12 @@ enum Commands {
         #[arg(last = true)]
         extra_args: Vec<String>,
     },
+
+    /// View node wallet balance, liquid WORK, vesting schedule, and payout status
+    Wallet,
+
+    /// View node contributor reputation score, effectiveness, and tier
+    Rep,
 
     /// Reconstruct authoritative state from Git and ledger (WU-G0-008)
     Replay,
@@ -273,6 +298,13 @@ enum Commands {
         candidate: Option<String>,
         #[arg(long)]
         base: Option<String>,
+    },
+
+    /// Manage, list, and inspect atomic WorkUnits in the ledger
+    #[command(alias = "wu")]
+    WorkUnit {
+        #[command(subcommand)]
+        cmd: WorkUnitCommands,
     },
 
     /// Verification Factory commands (Gate 0.6)
@@ -592,6 +624,9 @@ enum TaskCommands {
         /// Non-interactive mode (fail immediately if invalid without prompting)
         #[arg(long)]
         non_interactive: bool,
+        /// Ingest specification directly from GitHub issue number or URL
+        #[arg(long = "issue", short = 'i')]
+        issue: Option<String>,
     },
     /// Add task YAML to ledger
     Add {
@@ -646,6 +681,31 @@ enum SpecCommands {
         /// Non-interactive mode (fail immediately if invalid without prompting)
         #[arg(long)]
         non_interactive: bool,
+        /// Ingest specification directly from GitHub issue number or URL
+        #[arg(long = "issue", short = 'i')]
+        issue: Option<String>,
+    },
+    /// Ingest and translate a GitHub issue directly into a task specification
+    FromIssue {
+        /// Issue number or GitHub issue URL (e.g. 235 or https://github.com/horia-ai/vwl/issues/235)
+        issue: String,
+        /// GitHub repository in format owner/repo (defaults to horia-ai/vwl)
+        #[arg(long, default_value = "horia-ai/vwl")]
+        repo: String,
+        /// Automatically admit to ledger if Skeptic review passes
+        #[arg(long, default_value_t = true)]
+        admit: bool,
+        /// Non-interactive mode (fail immediately if invalid without prompting)
+        #[arg(long)]
+        non_interactive: bool,
+    },
+    /// Generate a roll-forward repair task specification from an incident or failed outcome
+    Repair {
+        /// Incident ID or failed outcome ID
+        incident_id: String,
+        /// Automatically admit to ledger if Skeptic review passes
+        #[arg(long, default_value_t = true)]
+        admit: bool,
     },
     /// Run Skeptic Adversarial Review Gate on draft task specification
     Review {
@@ -657,6 +717,41 @@ enum SpecCommands {
     List {
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum WorkUnitCommands {
+    /// List work units recorded in ledger
+    List {
+        /// Filter by task ID
+        #[arg(long = "task", short = 't')]
+        task: Option<String>,
+        /// Filter for unverified work units only
+        #[arg(long)]
+        unverified: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show details of a work unit by commit SHA or task ID
+    Show {
+        /// Candidate commit SHA, work unit commit, or task ID
+        commit: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Submit candidate commit as a verified WorkUnit
+    Submit {
+        /// Task ID this work unit fulfills
+        task_id: String,
+        /// Head commit SHA of candidate work
+        #[arg(long = "candidate", short = 'c')]
+        candidate: Option<String>,
+        /// Canonical base commit SHA
+        #[arg(long = "base", short = 'b')]
+        base: Option<String>,
     },
 }
 
@@ -743,6 +838,10 @@ enum NodeCommands {
     },
     /// Show current node identity, public key, and credential verification
     Show,
+    /// View node wallet balance, liquid WORK, vesting schedule, and payout status
+    Wallet,
+    /// View node contributor reputation score, effectiveness, and tier
+    Rep,
     /// Sign an arbitrary message with node's private key
     Sign { message: String },
     /// Verify a signature against a public key
@@ -880,6 +979,7 @@ fn main() -> Result<()> {
             force,
             validate,
             commit,
+            ci,
         } => {
             let repo_root = GitInspector::find_repo_root(&current_dir)?;
             let vwl_dir = repo_root.join(".vwl");
@@ -930,6 +1030,10 @@ fn main() -> Result<()> {
             }
             println!("  Git Pre-Commit:    {}", hook_status);
 
+            if ci {
+                handle_init_ci(&repo_root)?;
+            }
+
             if validate {
                 println!("\nValidating static pre-commit gates on current baseline...");
                 let gate_results = manifest.run_gates(&repo_root, true)?;
@@ -945,10 +1049,13 @@ fn main() -> Result<()> {
             }
 
             if commit {
-                let _ = std::process::Command::new("git")
-                    .args(["add", ".vwl", ".git/hooks/pre-commit"])
-                    .current_dir(&repo_root)
-                    .output();
+                let mut add_cmd = std::process::Command::new("git");
+                add_cmd.args(["add", ".vwl", ".git/hooks/pre-commit"]);
+                if ci {
+                    add_cmd.arg(".github/workflows/vwl-verify.yml");
+                }
+                let _ = add_cmd.current_dir(&repo_root).output();
+
                 let _ = std::process::Command::new("git")
                     .args([
                         "commit",
@@ -970,9 +1077,13 @@ fn main() -> Result<()> {
             harness,
             force,
             commit,
+            ci,
         } => {
             let repo_root = GitInspector::find_repo_root(&current_dir)?;
             handle_bootstrap(&repo_root, &harness, force, commit)?;
+            if ci {
+                handle_init_ci(&repo_root)?;
+            }
         }
 
         Commands::Hook { cmd } => match cmd {
@@ -1042,18 +1153,29 @@ fn main() -> Result<()> {
                 dependencies,
                 admit,
                 non_interactive,
+                issue,
             } => {
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
-                handle_spec_new(
-                    &repo_root,
-                    id,
-                    objective,
-                    acceptance,
-                    base,
-                    dependencies,
-                    admit,
-                    non_interactive,
-                )?;
+                if let Some(iss) = issue {
+                    handle_spec_from_issue(
+                        &repo_root,
+                        &iss,
+                        "horia-ai/vwl",
+                        admit,
+                        non_interactive,
+                    )?;
+                } else {
+                    handle_spec_new(
+                        &repo_root,
+                        id,
+                        objective,
+                        acceptance,
+                        base,
+                        dependencies,
+                        admit,
+                        non_interactive,
+                    )?;
+                }
             }
             TaskCommands::Review { path, json } => {
                 let content = std::fs::read_to_string(path)?;
@@ -1197,18 +1319,42 @@ fn main() -> Result<()> {
                 dependencies,
                 admit,
                 non_interactive,
+                issue,
             } => {
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
-                handle_spec_new(
-                    &repo_root,
-                    id,
-                    objective,
-                    acceptance,
-                    base,
-                    dependencies,
-                    admit,
-                    non_interactive,
-                )?;
+                if let Some(iss) = issue {
+                    handle_spec_from_issue(
+                        &repo_root,
+                        &iss,
+                        "horia-ai/vwl",
+                        admit,
+                        non_interactive,
+                    )?;
+                } else {
+                    handle_spec_new(
+                        &repo_root,
+                        id,
+                        objective,
+                        acceptance,
+                        base,
+                        dependencies,
+                        admit,
+                        non_interactive,
+                    )?;
+                }
+            }
+            SpecCommands::FromIssue {
+                issue,
+                repo,
+                admit,
+                non_interactive,
+            } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                handle_spec_from_issue(&repo_root, &issue, &repo, admit, non_interactive)?;
+            }
+            SpecCommands::Repair { incident_id, admit } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                handle_spec_repair(&repo_root, &incident_id, admit)?;
             }
             SpecCommands::Review { path, json } => {
                 let content = std::fs::read_to_string(path)?;
@@ -1321,6 +1467,7 @@ fn main() -> Result<()> {
 
         Commands::Dev {
             task_id,
+            issue,
             harness,
             watch,
             chat,
@@ -1360,11 +1507,43 @@ fn main() -> Result<()> {
                 let _ = handle_gh_sync(&repo_root, "horia-ai/vwl", false);
             }
 
-            handle_developer_mode(&repo_root, task_id, &harness, watch, chat, &extra_args)?;
+            let resolved_task_id = if let Some(iss) = issue {
+                let target_tid = format!("ISSUE-{}", iss);
+                let ledger = LocalLedger::new(&repo_root)?;
+                let tasks = ledger.get_tasks()?;
+                if !tasks.iter().any(|t| {
+                    t.id == target_tid
+                        || t.id.contains(&iss.to_string())
+                        || t.objective.contains(&format!("#{}", iss))
+                }) {
+                    println!("[VWL Developer] Task for issue #{} not found in ledger. Ingesting with spec-writer...", iss);
+                    handle_spec_from_issue(
+                        &repo_root,
+                        &iss.to_string(),
+                        "horia-ai/vwl",
+                        true,
+                        true,
+                    )?;
+                }
+                Some(target_tid)
+            } else {
+                task_id
+            };
+
+            handle_developer_mode(
+                &repo_root,
+                resolved_task_id,
+                &harness,
+                watch,
+                chat,
+                &extra_args,
+            )?;
         }
 
         Commands::Verifier {
             commit,
+            task,
+            issue,
             harness,
             specialist,
             watch,
@@ -1380,9 +1559,30 @@ fn main() -> Result<()> {
                 handle_bootstrap(&repo_root, &harness, false, false)?;
             }
 
+            let resolved_commit = if commit.is_some() {
+                commit
+            } else if let Some(ref t) = task {
+                let ledger = LocalLedger::new(&repo_root)?;
+                let wus = ledger.get_work_units()?;
+                wus.into_iter()
+                    .rev()
+                    .find(|w| w.task == *t)
+                    .map(|w| w.candidate)
+            } else if let Some(iss) = issue {
+                let ledger = LocalLedger::new(&repo_root)?;
+                let wus = ledger.get_work_units()?;
+                let tid = format!("ISSUE-{}", iss);
+                wus.into_iter()
+                    .rev()
+                    .find(|w| w.task == tid || w.task.contains(&iss.to_string()))
+                    .map(|w| w.candidate)
+            } else {
+                None
+            };
+
             handle_verifier_mode(
                 &repo_root,
-                commit,
+                resolved_commit,
                 &harness,
                 &specialist,
                 watch,
@@ -1390,6 +1590,16 @@ fn main() -> Result<()> {
                 poll_interval_secs,
                 &extra_args,
             )?;
+        }
+
+        Commands::Wallet => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            handle_node_wallet(&repo_root)?;
+        }
+
+        Commands::Rep => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            handle_node_rep(&repo_root)?;
         }
 
         Commands::Replay => {
@@ -1554,63 +1764,30 @@ fn main() -> Result<()> {
             base,
         } => {
             let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            handle_submit(&repo_root, &task_id, candidate, base)?;
+        }
 
-            // Enforce non-bypassable pre-commit validator gates before candidate submission
-            let manifest = GatesManifest::load_or_detect(&repo_root)?;
-            let precommit_results = manifest.run_gates(&repo_root, true)?;
-            let failed_gates: Vec<_> = precommit_results.iter().filter(|r| !r.passed).collect();
-            if !failed_gates.is_empty() {
-                let failing_names: Vec<String> =
-                    failed_gates.iter().map(|r| r.name.clone()).collect();
-                eprintln!(
-                    "[VWL Submit] ❌ Pre-commit validator gates failed: {:?}",
-                    failing_names
-                );
-                return Err(VwlError::VerificationFailed(format!(
-                    "Pre-commit gate failed for candidate submission: {:?}",
-                    failing_names
-                )));
-            }
-
-            let ledger = LocalLedger::new(&repo_root)?;
-            let graph = ledger.get_task_graph()?;
-            let decisions = ledger.get_decisions()?;
-            let wus = ledger.get_work_units()?;
-            let mut confirmed = HashSet::new();
-            for wu in wus {
-                if decisions.iter().any(|d| {
-                    (d.subject == wu.commit || d.subject == wu.candidate)
-                        && d.outcome == DecisionOutcome::Confirmed
-                }) {
-                    confirmed.insert(wu.task);
+        Commands::WorkUnit { cmd } => {
+            let repo_root = GitInspector::find_repo_root(&current_dir)?;
+            match cmd {
+                WorkUnitCommands::List {
+                    task,
+                    unverified,
+                    json,
+                } => {
+                    handle_work_unit_list(&repo_root, task.as_deref(), unverified, json)?;
+                }
+                WorkUnitCommands::Show { commit, json } => {
+                    handle_work_unit_show(&repo_root, &commit, json)?;
+                }
+                WorkUnitCommands::Submit {
+                    task_id,
+                    candidate,
+                    base,
+                } => {
+                    handle_submit(&repo_root, &task_id, candidate, base)?;
                 }
             }
-            let dep_snapshot = graph.compute_dependency_snapshot(&task_id, &confirmed);
-            let repo_info = GitInspector::inspect(&repo_root)?;
-            let cand_sha = candidate.clone().unwrap_or(repo_info.head_sha);
-            let base_sha = base.clone().unwrap_or_else(|| {
-                repo_info
-                    .canonical_base
-                    .unwrap_or_else(|| "base_root".to_string())
-            });
-
-            let wu = WorkUnit::new_sequence(
-                &task_id,
-                &base_sha,
-                vec![CommitEntry {
-                    sha: cand_sha.clone(),
-                    role: "implementation".to_string(),
-                    actor: "worker".to_string(),
-                }],
-                &cand_sha,
-                None,
-                Some(dep_snapshot.clone()),
-            )?;
-            ledger.append_work_unit(&wu)?;
-            println!("WorkUnit submitted successfully for task {}:", task_id);
-            println!("  Candidate:           {}", cand_sha);
-            println!("  Base:                {}", base_sha);
-            println!("  Dependency Snapshot: {}", dep_snapshot);
         }
 
         Commands::Verify { cmd } => {
@@ -2426,6 +2603,16 @@ fn main() -> Result<()> {
                         "INVALID/TAMPERED"
                     }
                 );
+            }
+
+            NodeCommands::Wallet => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                handle_node_wallet(&repo_root)?;
+            }
+
+            NodeCommands::Rep => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                handle_node_rep(&repo_root)?;
             }
 
             NodeCommands::Sign { message } => {
@@ -4450,4 +4637,629 @@ fn handle_spec_new(
     }
 
     Ok(())
+}
+
+fn handle_init_ci(repo_root: &Path) -> Result<()> {
+    let workflows_dir = repo_root.join(".github").join("workflows");
+    std::fs::create_dir_all(&workflows_dir)?;
+    let workflow_path = workflows_dir.join("vwl-verify.yml");
+    let content = r#"name: VWL Verification Gates
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Run VWL Validator Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Setup Rust toolchain
+        if: hashFiles('Cargo.toml') != ''
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Run VWL Pre-Commit Gates
+        run: npx -y @horia-ai/vwl verify precommit
+"#;
+    std::fs::write(&workflow_path, content)?;
+    println!(
+        "  CI Workflow:       Generated GitHub Actions verification workflow at {}",
+        workflow_path.display()
+    );
+    Ok(())
+}
+
+fn handle_node_wallet(repo_root: &Path) -> Result<()> {
+    let cred_path = repo_root
+        .join(".vwl")
+        .join("identity")
+        .join("credential.yaml");
+    let node_id = if cred_path.exists() {
+        let yaml_str = fs::read_to_string(&cred_path)?;
+        let cred: NodeCredential = serde_yaml::from_str(&yaml_str)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        cred.node_id
+    } else {
+        "unregistered".to_string()
+    };
+
+    let ledger = EconomicLedger::load_from_ledger(repo_root)?;
+    println!("=== [VWL NODE WALLET & ESCROW STATE] ===");
+    println!("  Node ID:         {}", node_id);
+
+    if let Some(node) = ledger.nodes.get(&node_id) {
+        println!(
+            "  Liquid WORK:     {:>10} WORK (${:.2} USD)",
+            node.liquid_work,
+            node.liquid_work as f64 * 0.001
+        );
+        println!(
+            "  Vesting WORK:    {:>10} WORK (${:.2} USD)",
+            node.vesting_work,
+            node.vesting_work as f64 * 0.001
+        );
+        println!(
+            "  Total Earned:    {:>10} WORK (${:.2} USD)",
+            node.earned_work,
+            node.earned_work as f64 * 0.001
+        );
+    } else {
+        println!("  Liquid WORK:              0 WORK ($0.00 USD)");
+        println!("  Vesting WORK:             0 WORK ($0.00 USD)");
+        println!("  Total Earned:             0 WORK ($0.00 USD)");
+    }
+
+    println!("\n  Active Project Escrows:");
+    for (pid, proj) in &ledger.projects {
+        println!(
+            "    - Project {}: Deposited {} WORK | Reserved {} WORK | Disbursed {} WORK",
+            pid, proj.total_deposited_work, proj.reserved_work, proj.disbursed_work
+        );
+    }
+    println!("\n  Active Engagements:");
+    let mut count = 0;
+    for eng in ledger.engagements.values() {
+        if eng.node_id == node_id {
+            count += 1;
+            println!(
+                "    - [{}] Allocated: {} WORK | Status: {}",
+                eng.id, eng.allocated_work, eng.status
+            );
+        }
+    }
+    if count == 0 {
+        println!("    (No active engagements for this node)");
+    }
+    Ok(())
+}
+
+fn handle_node_rep(repo_root: &Path) -> Result<()> {
+    let cred_path = repo_root
+        .join(".vwl")
+        .join("identity")
+        .join("credential.yaml");
+    let (node_id, role, name) = if cred_path.exists() {
+        let yaml_str = fs::read_to_string(&cred_path)?;
+        let cred: NodeCredential = serde_yaml::from_str(&yaml_str)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        (cred.node_id, cred.role, cred.display_name)
+    } else {
+        (
+            "anonymous".to_string(),
+            "unknown".to_string(),
+            "Anonymous Node".to_string(),
+        )
+    };
+
+    let ledger = LocalLedger::new(repo_root)?;
+    let wus = ledger.get_work_units()?;
+    let decisions = ledger.get_decisions()?;
+
+    let mut confirmed = 0;
+    let mut rejected = 0;
+    for wu in &wus {
+        for dec in &decisions {
+            if dec.subject == wu.commit || dec.subject == wu.candidate {
+                match dec.outcome {
+                    DecisionOutcome::Confirmed => confirmed += 1,
+                    DecisionOutcome::Rejected => rejected += 1,
+                    DecisionOutcome::Pending => {}
+                }
+            }
+        }
+    }
+
+    let total = confirmed + rejected;
+    let pass_rate = if total == 0 {
+        100.0
+    } else {
+        (confirmed as f64 / total as f64) * 100.0
+    };
+    let rep_score = (confirmed as i64 * 10) - (rejected as i64 * 25);
+
+    let tier = if rep_score >= 100 {
+        "Tier 1: Trusted Core Node / Senior Validator"
+    } else if rep_score >= 20 {
+        "Tier 2: Verified Contributor"
+    } else if rep_score >= 0 {
+        "Tier 3: Standard Labor Node"
+    } else {
+        "Probationary / High-Risk Node"
+    };
+
+    println!("=== [VWL NODE REPUTATION & EFFECTIVENESS REPORT] ===");
+    println!("  Node ID:         {}", node_id);
+    println!("  Role:            {}", role);
+    println!("  Name:            {}", name);
+    println!("  Status Tier:     {}", tier);
+    println!("  Confirmed WUs:   {}", confirmed);
+    println!("  Rejected WUs:    {}", rejected);
+    println!("  First-Pass Rate: {:.1}%", pass_rate);
+    println!("  Reputation REP:  {}", rep_score);
+    Ok(())
+}
+
+fn handle_spec_from_issue(
+    repo_root: &Path,
+    issue_ref: &str,
+    repo: &str,
+    admit: bool,
+    non_interactive: bool,
+) -> Result<()> {
+    let issue_num: u64 = if let Some(idx) = issue_ref.rfind('/') {
+        issue_ref[idx + 1..].parse().map_err(|_| {
+            VwlError::InvalidTask(format!(
+                "Could not parse issue number from URL: {}",
+                issue_ref
+            ))
+        })?
+    } else {
+        issue_ref
+            .trim_start_matches('#')
+            .parse()
+            .map_err(|_| VwlError::InvalidTask(format!("Invalid issue number: {}", issue_ref)))?
+    };
+
+    let parts: Vec<&str> = repo.split('/').collect();
+    let (owner, repo_name) = if parts.len() == 2 {
+        (parts[0], parts[1])
+    } else {
+        ("horia-ai", "vwl")
+    };
+
+    println!("=== [SPEC WRITER: INGEST GITHUB ISSUE #{}] ===", issue_num);
+    println!("  Repository: {}/{}", owner, repo_name);
+
+    let client = GithubClient::from_env();
+    let issue = match client {
+        Ok(c) => match c.get_issue(owner, repo_name, issue_num) {
+            Ok(iss) => iss,
+            Err(e) => {
+                println!(
+                    "  [Warning] Failed to fetch issue from GitHub API: {}. Using offline placeholder.",
+                    e
+                );
+                vwl_core::github::GithubIssue {
+                    number: issue_num,
+                    title: format!("Issue #{}", issue_num),
+                    state: "open".to_string(),
+                    html_url: format!(
+                        "https://github.com/{}/{}/issues/{}",
+                        owner, repo_name, issue_num
+                    ),
+                    labels: vec!["bug".to_string()],
+                    body: Some("Automated issue placeholder".to_string()),
+                }
+            }
+        },
+        Err(e) => {
+            println!(
+                "  [Warning] No GitHub token in environment: {}. Using offline placeholder.",
+                e
+            );
+            vwl_core::github::GithubIssue {
+                number: issue_num,
+                title: format!("Issue #{}", issue_num),
+                state: "open".to_string(),
+                html_url: format!(
+                    "https://github.com/{}/{}/issues/{}",
+                    owner, repo_name, issue_num
+                ),
+                labels: vec!["bug".to_string()],
+                body: Some("Automated issue placeholder".to_string()),
+            }
+        }
+    };
+
+    println!("  Title:  {}", issue.title);
+    println!("  Labels: {:?}", issue.labels);
+
+    let mut extracted_criteria = Vec::new();
+    let body_text = issue.body.as_deref().unwrap_or("");
+
+    for line in body_text.lines() {
+        let trimmed = line.trim().trim_start_matches(['`', '$', '>']).trim();
+        if trimmed.starts_with("cargo test")
+            || trimmed.starts_with("npm test")
+            || trimmed.starts_with("pytest")
+            || trimmed.starts_with("go test")
+            || trimmed.starts_with("forge test")
+        {
+            let clean_cmd = trimmed.trim_end_matches('`').trim().to_string();
+            if !extracted_criteria.contains(&clean_cmd) {
+                extracted_criteria.push(clean_cmd);
+            }
+        }
+    }
+
+    if extracted_criteria.is_empty() {
+        if let Ok(manifest) = GatesManifest::load_or_detect(repo_root) {
+            for gate in &manifest.gates {
+                if gate.precommit
+                    && (gate.name.contains("test")
+                        || gate.name.contains("lint")
+                        || gate.name.contains("check"))
+                {
+                    extracted_criteria.push(gate.command.clone());
+                }
+            }
+        }
+    }
+
+    if extracted_criteria.is_empty() {
+        extracted_criteria.push("cargo test --workspace".to_string());
+        extracted_criteria.push("vwl verify precommit".to_string());
+    }
+
+    let task_id = format!("ISSUE-{}", issue_num);
+    let objective = format!("Fix issue #{}: {}", issue_num, issue.title);
+
+    let repo_info = GitInspector::inspect(repo_root)?;
+    let base_sha = repo_info.head_sha;
+
+    let candidate_task = Task::new(&task_id, &objective, extracted_criteria.clone(), &base_sha)?;
+    let verdict = TaskSkeptic::review(&candidate_task);
+
+    if verdict.passed {
+        println!("\n=== [SKEPTIC VERDICT: PASSED (SELF-REVIEWED)] ===");
+        println!("=== [TASK SPECIFICATION: {}] ===", candidate_task.id);
+        println!(
+            "✓ Issue #{} has verified deterministic reproduction criteria.",
+            issue_num
+        );
+        println!("  No human skeptic ping-pong needed (fully reproducible).");
+        println!("  Task ID:            {}", candidate_task.id);
+        println!("  Objective:          {}", candidate_task.objective);
+        println!("  Base SHA:           {}", candidate_task.base);
+        println!("  Acceptance criteria: {:?}", candidate_task.acceptance);
+
+        let tasks_dir = repo_root.join(".vwl").join("ledger").join("tasks");
+        std::fs::create_dir_all(&tasks_dir)?;
+        let spec_file = tasks_dir.join(format!("{}.yaml", candidate_task.id));
+        std::fs::write(&spec_file, candidate_task.to_yaml()?)?;
+        println!("  Task specification written to: {}", spec_file.display());
+
+        if admit {
+            let ledger = LocalLedger::new(repo_root)?;
+            ledger.append_task(&candidate_task)?;
+            println!(
+                "  Task {} admitted to ledger with digest {}",
+                candidate_task.id,
+                candidate_task.compute_digest()
+            );
+        }
+        return Ok(());
+    }
+
+    if non_interactive {
+        return Err(VwlError::InvalidTask(format!(
+            "Issue #{} cannot be auto-admitted: {}",
+            issue_num,
+            verdict.objections.join("; ")
+        )));
+    }
+
+    println!(
+        "\n[Skeptic Inquiry] Issue #{} requires clarification before admission:",
+        issue_num
+    );
+    for obj in &verdict.objections {
+        println!("  [!] Objection:  {}", obj);
+    }
+    for sug in &verdict.suggestions {
+        println!("  [*] Suggestion: {}", sug);
+    }
+
+    handle_spec_new(
+        repo_root,
+        Some(task_id),
+        Some(objective),
+        extracted_criteria,
+        Some(base_sha),
+        Vec::new(),
+        admit,
+        false,
+    )?;
+
+    Ok(())
+}
+
+fn handle_spec_repair(repo_root: &Path, incident_id: &str, admit: bool) -> Result<()> {
+    let ledger = LocalLedger::new(repo_root)?;
+    let incidents = ledger.list_incidents()?;
+    let incident = incidents
+        .iter()
+        .find(|i| i.outcome_id == incident_id || i.root_work_unit == incident_id);
+
+    let (task_id, objective, criteria) = if let Some(inc) = incident {
+        (
+            format!("REPAIR-{}", inc.outcome_id),
+            format!(
+                "Roll-forward repair for incident {} (Root WU: {})",
+                inc.outcome_id, inc.root_work_unit
+            ),
+            vec![
+                "cargo test --workspace".to_string(),
+                "vwl verify precommit".to_string(),
+            ],
+        )
+    } else {
+        (
+            format!("REPAIR-{}", incident_id.replace(['/', '\\', ':'], "_")),
+            format!(
+                "Roll-forward repair for failed verification / regression on {}",
+                incident_id
+            ),
+            vec![
+                "cargo test --workspace".to_string(),
+                "vwl verify precommit".to_string(),
+            ],
+        )
+    };
+
+    let repo_info = GitInspector::inspect(repo_root)?;
+    let base_sha = repo_info.head_sha;
+
+    let repair_task = Task::new(&task_id, &objective, criteria, &base_sha)?;
+    let verdict = TaskSkeptic::review(&repair_task);
+
+    println!("=== [SPEC WRITER: ROLL-FORWARD REPAIR TASK] ===");
+    println!("  Repair Task ID: {}", repair_task.id);
+    println!("  Objective:      {}", repair_task.objective);
+    println!("  Base SHA:       {}", repair_task.base);
+    println!("  Acceptance:     {:?}", repair_task.acceptance);
+    println!(
+        "  Skeptic Review: {}",
+        if verdict.passed {
+            "PASSED (Self-Reviewed)"
+        } else {
+            "FAILED"
+        }
+    );
+
+    let tasks_dir = repo_root.join(".vwl").join("ledger").join("tasks");
+    std::fs::create_dir_all(&tasks_dir)?;
+    let spec_file = tasks_dir.join(format!("{}.yaml", repair_task.id));
+    std::fs::write(&spec_file, repair_task.to_yaml()?)?;
+    println!("  Specification written to: {}", spec_file.display());
+
+    if admit {
+        ledger.append_task(&repair_task)?;
+        println!(
+            "  Task {} admitted to ledger with digest {}",
+            repair_task.id,
+            repair_task.compute_digest()
+        );
+    }
+
+    Ok(())
+}
+
+fn handle_submit(
+    repo_root: &Path,
+    task_id: &str,
+    candidate: Option<String>,
+    base: Option<String>,
+) -> Result<()> {
+    // Enforce non-bypassable pre-commit validator gates before candidate submission
+    let manifest = GatesManifest::load_or_detect(repo_root)?;
+    let precommit_results = manifest.run_gates(repo_root, true)?;
+    let failed_gates: Vec<_> = precommit_results.iter().filter(|r| !r.passed).collect();
+    if !failed_gates.is_empty() {
+        let failing_names: Vec<String> = failed_gates.iter().map(|r| r.name.clone()).collect();
+        eprintln!(
+            "[VWL Submit] ❌ Pre-commit validator gates failed: {:?}",
+            failing_names
+        );
+        return Err(VwlError::VerificationFailed(format!(
+            "Pre-commit gate failed for candidate submission: {:?}",
+            failing_names
+        )));
+    }
+
+    let ledger = LocalLedger::new(repo_root)?;
+    let graph = ledger.get_task_graph()?;
+    let decisions = ledger.get_decisions()?;
+    let wus = ledger.get_work_units()?;
+    let mut confirmed = HashSet::new();
+    for wu in wus {
+        if decisions.iter().any(|d| {
+            (d.subject == wu.commit || d.subject == wu.candidate)
+                && d.outcome == DecisionOutcome::Confirmed
+        }) {
+            confirmed.insert(wu.task);
+        }
+    }
+    let dep_snapshot = graph.compute_dependency_snapshot(task_id, &confirmed);
+    let repo_info = GitInspector::inspect(repo_root)?;
+    let cand_sha = candidate.clone().unwrap_or(repo_info.head_sha);
+    let base_sha = base.clone().unwrap_or_else(|| {
+        repo_info
+            .canonical_base
+            .unwrap_or_else(|| "base_root".to_string())
+    });
+
+    let wu = WorkUnit::new_sequence(
+        task_id,
+        &base_sha,
+        vec![CommitEntry {
+            sha: cand_sha.clone(),
+            role: "implementation".to_string(),
+            actor: "worker".to_string(),
+        }],
+        &cand_sha,
+        None,
+        Some(dep_snapshot.clone()),
+    )?;
+    ledger.append_work_unit(&wu)?;
+    println!("WorkUnit submitted successfully for task {}:", task_id);
+    println!("  Candidate:           {}", cand_sha);
+    println!("  Base:                {}", base_sha);
+    println!("  Dependency Snapshot: {}", dep_snapshot);
+    Ok(())
+}
+
+fn handle_work_unit_list(
+    repo_root: &Path,
+    filter_task: Option<&str>,
+    unverified_only: bool,
+    json: bool,
+) -> Result<()> {
+    let ledger = LocalLedger::new(repo_root)?;
+    let wus = ledger.get_work_units()?;
+    let decisions = ledger.get_decisions().unwrap_or_default();
+
+    let mut filtered = Vec::new();
+    for wu in wus {
+        if let Some(t) = filter_task {
+            if wu.task != t && !wu.task.contains(t) {
+                continue;
+            }
+        }
+        let is_verified = decisions
+            .iter()
+            .any(|d| d.subject == wu.commit || d.subject == wu.candidate);
+        if unverified_only && is_verified {
+            continue;
+        }
+        filtered.push((wu, is_verified));
+    }
+
+    if json {
+        let items: Vec<_> = filtered
+            .iter()
+            .map(|(wu, verified)| {
+                serde_json::json!({
+                    "task": wu.task,
+                    "commit": wu.commit,
+                    "candidate": wu.candidate,
+                    "base": wu.base,
+                    "verified": verified,
+                    "commits_count": wu.commits.len(),
+                    "dependency_snapshot": wu.dependency_snapshot,
+                })
+            })
+            .collect();
+        let json_str = serde_json::to_string_pretty(&items)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        println!("{}", json_str);
+    } else {
+        println!("=== [VWL WORK UNITS IN LEDGER] ===");
+        if filtered.is_empty() {
+            println!("  (No work units found matching criteria)");
+        } else {
+            for (wu, verified) in &filtered {
+                let badge = if *verified {
+                    "✓ VERIFIED"
+                } else {
+                    "⏳ UNVERIFIED"
+                };
+                println!(
+                    "  • [{}] Task: {} — Candidate: {}",
+                    badge, wu.task, wu.candidate
+                );
+                println!("    Base:                {}", wu.base);
+                println!("    Commits in sequence: {}", wu.commits.len());
+                if let Some(ref dep) = wu.dependency_snapshot {
+                    println!("    Dependency Snapshot: {}", dep);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn handle_work_unit_show(repo_root: &Path, identifier: &str, json: bool) -> Result<()> {
+    let ledger = LocalLedger::new(repo_root)?;
+    let wus = ledger.get_work_units()?;
+    let wu = wus.into_iter().find(|w| {
+        w.commit == identifier
+            || w.candidate == identifier
+            || w.task == identifier
+            || w.commit.starts_with(identifier)
+            || w.candidate.starts_with(identifier)
+    });
+
+    match wu {
+        Some(wu) => {
+            let decisions = ledger.get_decisions().unwrap_or_default();
+            let proofs = ledger.get_proofs().unwrap_or_default();
+            let matching_decisions: Vec<_> = decisions
+                .into_iter()
+                .filter(|d| d.subject == wu.commit || d.subject == wu.candidate)
+                .collect();
+            let matching_proofs: Vec<_> = proofs
+                .into_iter()
+                .filter(|p| p.subject == wu.commit || p.subject == wu.candidate)
+                .collect();
+
+            if json {
+                let out = serde_json::json!({
+                    "work_unit": wu,
+                    "decisions": matching_decisions,
+                    "proofs": matching_proofs,
+                });
+                let json_str = serde_json::to_string_pretty(&out)
+                    .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                println!("{}", json_str);
+            } else {
+                println!("=== [WORK UNIT: {}] ===", wu.task);
+                println!("  Candidate SHA:       {}", wu.candidate);
+                println!("  Base SHA:            {}", wu.base);
+                println!("  Commits:             {}", wu.commits.len());
+                for (idx, c) in wu.commits.iter().enumerate() {
+                    println!("    {}. {} [{}] by {}", idx + 1, c.sha, c.role, c.actor);
+                }
+                if let Some(ref d) = wu.dependency_snapshot {
+                    println!("  Dependency Snapshot: {}", d);
+                }
+                if let Some(ref s) = wu.spec_digest {
+                    println!("  Spec Digest:         {}", s);
+                }
+                println!("  Decisions ({}):", matching_decisions.len());
+                for d in &matching_decisions {
+                    println!("    - Outcome: {:?}, Reason: {}", d.outcome, d.reason);
+                }
+                println!("  Proofs ({}):", matching_proofs.len());
+                for p in &matching_proofs {
+                    println!(
+                        "    - Gate: {:?}, Type: {:?}, Verdict: {:?}",
+                        p.gate, p.r#type, p.verdict
+                    );
+                }
+            }
+            Ok(())
+        }
+        None => Err(VwlError::InvalidWorkUnit(format!(
+            "Work unit not found with identifier '{}'",
+            identifier
+        ))),
+    }
 }

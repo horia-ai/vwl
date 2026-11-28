@@ -78,4 +78,53 @@ describe("@horia-ai/vwl NPX CLI Runner", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("executes spec from-issue and spec repair in runNodeFallback", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "vwl-issue-spec-test-"));
+    try {
+      const issueStatus = runNodeFallback(["spec", "from-issue", "235"], tempDir);
+      expect(issueStatus).toBe(0);
+      expect(existsSync(join(tempDir, ".vwl/ledger/tasks/ISSUE-235.yaml"))).toBe(true);
+
+      const repairStatus = runNodeFallback(["spec", "repair", "REG-001"], tempDir);
+      expect(repairStatus).toBe(0);
+      expect(existsSync(join(tempDir, ".vwl/ledger/tasks/REPAIR-REG-001.yaml"))).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("executes wu submit, list, and show in runNodeFallback", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "vwl-wu-test-"));
+    try {
+      const submitStatus = runNodeFallback(
+        ["wu", "submit", "TASK-100", "--candidate", "cand_abc123", "--base", "base_xyz"],
+        tempDir
+      );
+      expect(submitStatus).toBe(0);
+      expect(existsSync(join(tempDir, ".vwl/ledger/work_units/cand_abc123.yaml"))).toBe(true);
+
+      const listStatus = runNodeFallback(["wu", "list"], tempDir);
+      expect(listStatus).toBe(0);
+
+      const showStatus = runNodeFallback(["wu", "show", "cand_abc123"], tempDir);
+      expect(showStatus).toBe(0);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("executes wallet, rep, and bootstrap --ci cleanly in runNodeFallback", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "vwl-aux-test-"));
+    try {
+      expect(runNodeFallback(["wallet"], tempDir)).toBe(0);
+      expect(runNodeFallback(["rep"], tempDir)).toBe(0);
+
+      const ciStatus = runNodeFallback(["bootstrap", "--ci"], tempDir);
+      expect(ciStatus).toBe(0);
+      expect(existsSync(join(tempDir, ".github/workflows/vwl-verify.yml"))).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -1694,3 +1694,247 @@ fn test_cli_task_new_alias() {
     assert!(stdout.contains("TASK-NEW-01.yaml"));
     assert!(stdout.contains("admitted to ledger with digest"));
 }
+
+#[test]
+fn test_cli_spec_from_issue_and_repair() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let dummy_file = temp.path().join("README.md");
+    fs::write(&dummy_file, "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Ingest issue specification
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["spec", "from-issue", "235", "--non-interactive"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl spec from-issue");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("TASK SPECIFICATION: ISSUE-235"));
+    assert!(stdout.contains("admitted to ledger with digest"));
+
+    let spec_path = temp.path().join(".vwl/ledger/tasks/ISSUE-235.yaml");
+    assert!(spec_path.exists());
+
+    // Generate roll-forward repair specification
+    let repair_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["spec", "repair", "INC-404"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl spec repair");
+
+    assert!(repair_output.status.success());
+    let repair_stdout = String::from_utf8_lossy(&repair_output.stdout);
+    assert!(repair_stdout.contains("ROLL-FORWARD REPAIR TASK"));
+    assert!(repair_stdout.contains("REPAIR-INC-404"));
+
+    let repair_path = temp.path().join(".vwl/ledger/tasks/REPAIR-INC-404.yaml");
+    assert!(repair_path.exists());
+}
+
+#[test]
+fn test_cli_work_unit_lifecycle() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let dummy_file = temp.path().join("README.md");
+    fs::write(&dummy_file, "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Bootstrap repository with dummy pre-commit gate
+    let gates_dir = temp.path().join(".vwl");
+    fs::create_dir_all(&gates_dir).unwrap();
+    let gates_yaml = r#"version: "1.0"
+project: "test"
+languages: ["rust"]
+gates:
+  - name: "true-gate"
+    plane: deterministic
+    command: "true"
+    precommit: true
+    timeout_secs: 60
+    description: "True test gate"
+"#;
+    fs::write(gates_dir.join("gates.yaml"), gates_yaml).unwrap();
+
+    // Ingest task
+    Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "spec",
+            "new",
+            "--id",
+            "TASK-WU-01",
+            "--objective",
+            "Implement unit of work",
+            "-a",
+            "true",
+            "--non-interactive",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Submit WorkUnit via vwl wu submit
+    let submit_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "wu",
+            "submit",
+            "TASK-WU-01",
+            "--candidate",
+            "cand_test_sha_123",
+            "--base",
+            "base_test_sha_000",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl wu submit");
+
+    assert!(submit_output.status.success());
+    let submit_stdout = String::from_utf8_lossy(&submit_output.stdout);
+    assert!(submit_stdout.contains("WorkUnit submitted successfully for task TASK-WU-01"));
+
+    // List WorkUnits via vwl wu list
+    let list_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["wu", "list"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl wu list");
+
+    assert!(list_output.status.success());
+    let list_stdout = String::from_utf8_lossy(&list_output.stdout);
+    assert!(list_stdout.contains("TASK-WU-01"));
+    assert!(list_stdout.contains("cand_test_sha_123"));
+
+    // Show WorkUnit via vwl wu show
+    let show_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["wu", "show", "cand_test_sha_123"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl wu show");
+
+    assert!(show_output.status.success());
+    let show_stdout = String::from_utf8_lossy(&show_output.stdout);
+    assert!(show_stdout.contains("=== [WORK UNIT: TASK-WU-01] ==="));
+    assert!(show_stdout.contains("Candidate SHA:       cand_test_sha_123"));
+    assert!(show_stdout.contains("Base SHA:            base_test_sha_000"));
+}
+
+#[test]
+fn test_cli_wallet_and_rep_commands() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    // Run vwl wallet
+    let wallet_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["wallet"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl wallet");
+    assert!(wallet_out.status.success());
+    let wallet_str = String::from_utf8_lossy(&wallet_out.stdout);
+    assert!(wallet_str.contains("VWL NODE WALLET & ESCROW STATE"));
+
+    // Run vwl rep
+    let rep_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["rep"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl rep");
+    assert!(rep_out.status.success());
+    let rep_str = String::from_utf8_lossy(&rep_out.stdout);
+    assert!(rep_str.contains("VWL NODE REPUTATION & EFFECTIVENESS REPORT"));
+
+    // Run vwl node wallet
+    let node_wallet_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["node", "wallet"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl node wallet");
+    assert!(node_wallet_out.status.success());
+
+    // Run vwl node rep
+    let node_rep_out = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["node", "rep"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl node rep");
+    assert!(node_rep_out.status.success());
+}
+
+#[test]
+fn test_cli_bootstrap_ci_workflow() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["bootstrap", "--ci"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl bootstrap --ci");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("vwl-verify.yml"));
+
+    let ci_file = temp.path().join(".github/workflows/vwl-verify.yml");
+    assert!(ci_file.exists());
+    let ci_content = fs::read_to_string(ci_file).unwrap();
+    assert!(ci_content.contains("VWL Verification Gates"));
+}

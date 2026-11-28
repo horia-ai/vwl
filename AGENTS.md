@@ -13,51 +13,53 @@ Whenever an autonomous agent starts or resumes work in this repository:
    - Run `npx @horia-ai/vwl verify precommit` (or `cargo test --workspace`) to confirm all static validator gates pass on the clean base.
    - Commit the baseline bootstrap configuration before starting any task code.
 
-## Phase 1: Interactive Spec Writing & Adversarial Grilling
-Whenever the user asks you to design, plan, or implement a new feature or task:
-Do NOT jump straight to code or create vague tasks. Adopt the **Adversarial Spec Skeptic** persona:
-1. **Grill the User with Rigorous Questions**:
-   - **Falsifiability**: What exact CLI command or automated test assertion proves this task is done?
-   - **Invariants**: What system invariants or data constraints must NEVER be broken?
-   - **Edge Cases & Failure Modes**: What happens on empty/null input, network timeout, error states, and concurrency?
-   - **Error Semantics**: What exact error codes or types should be returned?
-   - **Base Commit**: What is the canonical base Git commit SHA (use HEAD)?
-2. **Reject Vague or Conversational Requirements**:
-   - Reject subjective criteria: *"clean code"*, *"looks good"*, *"fast enough"*, *"well tested"*, *"high quality"*.
-   - Reject conversational dependencies: *"as discussed"*, *"like we agreed"*, *"in our chat"*.
-3. **Generate & Ingest Immutable Task Specification**:
-   Write the specification to `.vwl/ledger/tasks/<task-id>.yaml`:
-   ```yaml
-   id: "<task-id>"
-   objective: "<Self-contained objective statement>"
-   acceptance:
-     - "<exact-test-or-verification-command>"
-   base: "<canonical-git-base-sha>"
-   ```
-   Formally validate and ingest with the Skeptic Review Gate:
-   ```bash
-   vwl task add .vwl/ledger/tasks/<task-id>.yaml --skeptic
-   ```
-   Link dependencies if required:
-   ```bash
-   vwl task add-dep <parent-task> <task-id> --kind requires
-   ```
+## Phase 1: Dual-Path Spec Writing & Adversarial Grilling
+Whenever you are asked to design, plan, or implement a new feature, bugfix, or issue:
+Do NOT jump straight to code or create vague tasks. Follow the dual-path specification protocol:
+1. **Path A (New Features & Ambiguous Requests)** — Adopt the **Adversarial Spec Skeptic** persona:
+   - **Grill the User**: Ask pointed questions on Falsifiability, Invariants, Edge Cases & Failure Modes, Error Semantics, and Base Commit SHA.
+   - **Reject Subjective / Conversational Drift**: Reject criteria like *"clean code"*, *"looks good"*, *"fast enough"*, *"as discussed"*.
+   - Create specification: `vwl spec new --id <task-id> --objective "<objective>" -a "<test-cmd>"`
+2. **Path B (Reproducible Bugs & GitHub Issues)**:
+   - Ingest directly: `vwl spec from-issue <id_or_url>` (or `--issue <id>`).
+   - The Spec Writer auto-extracts deterministic reproducer commands (`cargo test`, `npm test`, code blocks), runs self-review with `TaskSkeptic`, and auto-admits to the ledger without human interrogation.
+3. **Path C (Roll-Forward Regressions & Incidents)**:
+   - Ingest incident: `vwl spec repair <incident-id>`.
+   - Generates and admits a forward-repair task targeting the regression root cause.
 
-## Phase 2: Task Execution & Worktree Isolation
+## Phase 2: Task Execution & WorkUnit Submission
 When implementing an admitted task:
-1. **Inspect Frontier**: Check ready tasks: `vwl frontier` (or `npx @horia-ai/vwl status`).
-2. **Claim Task**: Claim your assigned task: `vwl claim <task-id>`.
+1. **Inspect Frontier**: Check ready tasks: `vwl frontier` (or `vwl wu list --unverified`).
+2. **Targeting or Claim**:
+   - Auto-claim or target a specific task: `vwl dev --task <task-id>`
+   - Target a specific issue: `vwl dev --issue <issue-number>`
 3. **Isolated Worktree**: Create and enter isolated worktree: `vwl work <task-id>` (at `.vwl/worktrees/<task-id>`).
 4. **Strict TDD & Mutation Rigor**:
    - Red: Write failing test first.
    - Green: Write minimal implementation to pass.
    - Refactor: Clean types and formatting.
    - Mutation Testing: Ensure mutation score >= 80%.
-5. **Validator Verification**: Pass all pre-commit validator gates: `vwl verify precommit`.
-6. **Git Commit & Submission**: Commit your changes in git and submit candidate diff:
+5. **Validator Verification**: Pass all non-bypassable pre-commit validator gates: `vwl verify precommit`.
+6. **Git Commit & WorkUnit Submission**: Commit atomic candidate changes in Git and submit candidate WorkUnit:
    ```bash
+   vwl wu submit <task-id> --candidate <head-sha>
+   # Or alias:
    vwl submit <task-id> --candidate <head-sha>
    ```
 
-## Phase 3: Independent Verification
-The Verifier runs in a fresh context with **Zero Implementer Chat** (0 conversational tokens), executes `.vwl/gates.yaml`, and appends an immutable `Proof` and `Decision` to the ledger.
+## Phase 3: Independent Verification (Zero Implementer Chat)
+The Verifier runs in a fresh context with **Zero Implementer Chat** (0 conversational tokens):
+1. **Continuous or Targeted Mode**:
+   - Scan ledger: `vwl verifier`
+   - Target specific task: `vwl verifier --task <task-id>`
+   - Target specific issue: `vwl verifier --issue <issue-number>`
+   - Target specific candidate: `vwl verifier <candidate-sha>`
+2. **Verification & Ledger Attestation**:
+   - Executes `.vwl/gates.yaml` in read-only isolation.
+   - Appends cryptographic `Proof` and `Decision` to the ledger.
+   - Inspect confirmed work units: `vwl wu list` and `vwl wu show <commit>`.
+
+## Phase 4: Node Telemetry & Protocol Settlement
+- Inspect node balances, liquid WORK, vesting schedules, and project escrows: `vwl wallet` (or `vwl node wallet`).
+- Inspect contributor reputation score, tiers, and first-pass acceptance rates: `vwl rep` (or `vwl node rep`).
+- Discover high-paying repositories and funded bounties: `vwl market list` and `vwl market scan`.
