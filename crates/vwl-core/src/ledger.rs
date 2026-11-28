@@ -210,6 +210,7 @@ impl LocalLedger {
             }
         }
         tasks.sort_by(|a, b| a.id.cmp(&b.id));
+        tasks.dedup_by(|a, b| a.id == b.id);
         Ok(tasks)
     }
 

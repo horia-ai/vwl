@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use vwl_core::{
     decision::{Decision, DecisionEngine, DecisionOutcome},
@@ -131,6 +131,13 @@ enum Commands {
     Task {
         #[command(subcommand)]
         cmd: TaskCommands,
+    },
+
+    /// Interactive spec writing, Adversarial Skeptic grilling, and task spec review
+    #[command(alias = "grill")]
+    Spec {
+        #[command(subcommand)]
+        cmd: SpecCommands,
     },
 
     /// Create isolated worktree for a task (WU-G0-009)
@@ -562,6 +569,30 @@ enum MarketCommands {
 
 #[derive(Subcommand)]
 enum TaskCommands {
+    /// Interactively grill the user with Adversarial Spec Skeptic questions to create and admit a verifiable task specification
+    New {
+        /// Task ID (e.g. TASK-001, FEAT-AUTH)
+        #[arg(long)]
+        id: Option<String>,
+        /// Self-contained objective statement
+        #[arg(long)]
+        objective: Option<String>,
+        /// Falsifiable acceptance command(s) (e.g. 'cargo test -p vwl-core', 'npm test')
+        #[arg(long = "acceptance", short = 'a')]
+        acceptance: Vec<String>,
+        /// Canonical git base SHA (defaults to HEAD)
+        #[arg(long)]
+        base: Option<String>,
+        /// Dependency task ID(s) that this task requires
+        #[arg(long = "dep", short = 'd')]
+        dependencies: Vec<String>,
+        /// Automatically admit to ledger if Skeptic review passes
+        #[arg(long, default_value_t = true)]
+        admit: bool,
+        /// Non-interactive mode (fail immediately if invalid without prompting)
+        #[arg(long)]
+        non_interactive: bool,
+    },
     /// Add task YAML to ledger
     Add {
         path: PathBuf,
@@ -588,6 +619,45 @@ enum TaskCommands {
     },
     /// Cancel a task in the graph
     Cancel { task_id: String },
+}
+
+#[derive(Subcommand)]
+enum SpecCommands {
+    /// Interactively grill the user with Adversarial Spec Skeptic questions to create and admit a verifiable task specification
+    New {
+        /// Task ID (e.g. TASK-001, FEAT-AUTH)
+        #[arg(long)]
+        id: Option<String>,
+        /// Self-contained objective statement
+        #[arg(long)]
+        objective: Option<String>,
+        /// Falsifiable acceptance command(s) (e.g. 'cargo test -p vwl-core', 'npm test')
+        #[arg(long = "acceptance", short = 'a')]
+        acceptance: Vec<String>,
+        /// Canonical git base SHA (defaults to HEAD)
+        #[arg(long)]
+        base: Option<String>,
+        /// Dependency task ID(s) that this task requires
+        #[arg(long = "dep", short = 'd')]
+        dependencies: Vec<String>,
+        /// Automatically admit to ledger if Skeptic review passes
+        #[arg(long, default_value_t = true)]
+        admit: bool,
+        /// Non-interactive mode (fail immediately if invalid without prompting)
+        #[arg(long)]
+        non_interactive: bool,
+    },
+    /// Run Skeptic Adversarial Review Gate on draft task specification
+    Review {
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List task specifications in the repository ledger
+    List {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -964,6 +1034,27 @@ fn main() -> Result<()> {
         }
 
         Commands::Task { cmd } => match cmd {
+            TaskCommands::New {
+                id,
+                objective,
+                acceptance,
+                base,
+                dependencies,
+                admit,
+                non_interactive,
+            } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                handle_spec_new(
+                    &repo_root,
+                    id,
+                    objective,
+                    acceptance,
+                    base,
+                    dependencies,
+                    admit,
+                    non_interactive,
+                )?;
+            }
             TaskCommands::Review { path, json } => {
                 let content = std::fs::read_to_string(path)?;
                 let task = Task::from_yaml(&content)?;
@@ -1094,6 +1185,96 @@ fn main() -> Result<()> {
                 let mut graph = ledger.get_task_graph()?;
                 graph.cancel_task(&task_id);
                 println!("Task {} marked CANCELLED in Task DAG", task_id);
+            }
+        },
+
+        Commands::Spec { cmd } => match cmd {
+            SpecCommands::New {
+                id,
+                objective,
+                acceptance,
+                base,
+                dependencies,
+                admit,
+                non_interactive,
+            } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                handle_spec_new(
+                    &repo_root,
+                    id,
+                    objective,
+                    acceptance,
+                    base,
+                    dependencies,
+                    admit,
+                    non_interactive,
+                )?;
+            }
+            SpecCommands::Review { path, json } => {
+                let content = std::fs::read_to_string(path)?;
+                let task = Task::from_yaml(&content)?;
+                let verdict = TaskSkeptic::review(&task);
+                if json {
+                    let json_str = serde_json::to_string_pretty(&verdict)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    println!("{}", json_str);
+                } else {
+                    println!(
+                        "=== SKEPTIC ADVERSARIAL REVIEW: Task {} ===",
+                        verdict.task_id
+                    );
+                    if verdict.passed {
+                        println!(
+                            "  VERDICT: PASSED (Falsifiable, command-grounded, zero conversational drift)"
+                        );
+                    } else {
+                        println!(
+                            "  VERDICT: FAILED ({} objections found):",
+                            verdict.objections.len()
+                        );
+                        for obj in &verdict.objections {
+                            println!("    [!] Objection:  {}", obj);
+                        }
+                        for sug in &verdict.suggestions {
+                            println!("    [*] Suggestion: {}", sug);
+                        }
+                    }
+                }
+                if !verdict.passed {
+                    return Err(VwlError::InvalidTask(
+                        "Task failed Skeptic Adversarial Review".to_string(),
+                    ));
+                }
+            }
+            SpecCommands::List { json } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                let ledger = LocalLedger::new(&repo_root)?;
+                let tasks = ledger.get_tasks()?;
+                if json {
+                    let json_str = serde_json::to_string_pretty(&tasks)
+                        .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+                    println!("{}", json_str);
+                } else {
+                    println!("=== [VWL TASK SPECIFICATIONS] ===");
+                    if tasks.is_empty() {
+                        println!("  (No tasks found in .vwl/ledger/tasks/)");
+                    } else {
+                        for t in &tasks {
+                            let verdict = TaskSkeptic::review(t);
+                            let status_badge = if verdict.passed {
+                                "✓ VERIFIED"
+                            } else {
+                                "✗ SKEPTIC REJECTED"
+                            };
+                            println!("  • [{}] {} — {}", status_badge, t.id, t.objective);
+                            println!("    Base:       {}", t.base);
+                            println!("    Acceptance: {} criteria", t.acceptance.len());
+                            for a in &t.acceptance {
+                                println!("      - {}", a);
+                            }
+                        }
+                    }
+                }
             }
         },
 
@@ -4054,6 +4235,217 @@ fn run_worker_daemon(
                 break;
             }
             std::thread::sleep(std::time::Duration::from_secs(poll_interval_secs));
+        }
+    }
+
+    Ok(())
+}
+
+fn prompt_line(prompt_text: &str) -> Result<String> {
+    use std::io::{self, Write};
+    print!("{}", prompt_text);
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    Ok(input.trim().to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_spec_new(
+    repo_root: &Path,
+    mut id: Option<String>,
+    mut objective: Option<String>,
+    mut acceptance: Vec<String>,
+    mut base: Option<String>,
+    dependencies: Vec<String>,
+    admit: bool,
+    non_interactive: bool,
+) -> Result<()> {
+    if !non_interactive {
+        println!("============================================================");
+        println!("=== [VWL ADVERSARIAL SPEC SKEPTIC: GRILLING WIZARD]      ===");
+        println!("============================================================");
+        println!("The Skeptic rejects subjective criteria and conversational drift.");
+        println!("Every specification must be falsifiable with deterministic assertions.\n");
+    }
+
+    // 1. Base Commit
+    let repo_info = GitInspector::inspect(repo_root)?;
+    let head_sha = repo_info.head_sha;
+    if base.is_none() || base.as_deref() == Some("") {
+        if non_interactive {
+            base = Some(head_sha);
+        } else {
+            let prompt_text = format!("Canonical Git Base SHA [default HEAD: {}]: ", head_sha);
+            let user_base = prompt_line(&prompt_text)?;
+            base = Some(if user_base.is_empty() {
+                head_sha
+            } else {
+                user_base
+            });
+        }
+    }
+
+    // 2. Task ID
+    while id.as_deref().unwrap_or("").trim().is_empty() {
+        if non_interactive {
+            return Err(VwlError::InvalidTask(
+                "Task ID cannot be empty (provide --id <task-id>)".to_string(),
+            ));
+        }
+        let user_id = prompt_line("Task ID (e.g. TASK-001, FEAT-AUTH): ")?;
+        if !user_id.is_empty() {
+            id = Some(user_id);
+            break;
+        }
+    }
+
+    // 3. Objective
+    while objective.as_deref().unwrap_or("").trim().is_empty() {
+        if non_interactive {
+            return Err(VwlError::InvalidTask(
+                "Task objective cannot be empty (provide --objective <statement>)".to_string(),
+            ));
+        }
+        println!("\n[Skeptic Q1] What is the self-contained objective statement for this task?");
+        println!(
+            "  (Rule: Self-contained. No conversational cues like 'as discussed', 'in our chat')"
+        );
+        let user_obj = prompt_line("Objective: ")?;
+        if !user_obj.is_empty() {
+            objective = Some(user_obj);
+            break;
+        }
+    }
+
+    // 4. Acceptance Criteria
+    while acceptance.is_empty() {
+        if non_interactive {
+            return Err(VwlError::InvalidTask(
+                "No acceptance criteria defined (provide -a / --acceptance <command>)".to_string(),
+            ));
+        }
+        println!("\n[Skeptic Q2] What exact CLI command or automated test assertion proves this is done?");
+        println!(
+            "  (Rule: Must be deterministic commands like 'cargo test -p vwl-core', 'npm test')"
+        );
+        println!("  (Rule: Subjective phrases like 'clean code', 'looks good', 'well tested' are REJECTED)");
+        println!("Enter acceptance commands one by one (blank line when finished):");
+        loop {
+            let cmd = prompt_line("Acceptance command: ")?;
+            if cmd.is_empty() {
+                if !acceptance.is_empty() {
+                    break;
+                }
+                println!("  [!] At least one falsifiable acceptance command is required.");
+                continue;
+            }
+            acceptance.push(cmd);
+        }
+    }
+
+    // 5. Adversarial Skeptic Grilling & Validation Loop
+    let current_id = id.unwrap();
+    let mut current_obj = objective.unwrap();
+    let current_base = base.unwrap();
+    let mut current_acceptance = acceptance;
+
+    let final_task = loop {
+        let task = match Task::new(
+            &current_id,
+            &current_obj,
+            current_acceptance.clone(),
+            &current_base,
+        ) {
+            Ok(t) => t,
+            Err(e) => {
+                if non_interactive {
+                    return Err(e);
+                }
+                println!("\n[!] Task specification error: {}", e);
+                current_obj = prompt_line("Re-enter objective: ")?;
+                continue;
+            }
+        };
+
+        let verdict = TaskSkeptic::review(&task);
+        if verdict.passed {
+            if !non_interactive {
+                println!("\n=== [SKEPTIC VERDICT: PASSED] ===");
+                println!(
+                    "✓ Task {} is falsifiable, command-grounded, and free of conversational drift.",
+                    task.id
+                );
+            }
+            break task;
+        }
+
+        println!(
+            "\n=== [SKEPTIC VERDICT: REJECTED] ({} objections) ===",
+            verdict.objections.len()
+        );
+        for obj in &verdict.objections {
+            println!("  [!] Objection:  {}", obj);
+        }
+        for sug in &verdict.suggestions {
+            println!("  [*] Suggestion: {}", sug);
+        }
+
+        if non_interactive {
+            return Err(VwlError::InvalidTask(format!(
+                "Task {} rejected by Adversarial Skeptic: {}",
+                task.id,
+                verdict.objections.join("; ")
+            )));
+        }
+
+        println!("\nPlease address the Skeptic's objections.");
+        let new_obj = prompt_line(&format!(
+            "Update objective (press Enter to keep '{}'): ",
+            current_obj
+        ))?;
+        if !new_obj.is_empty() {
+            current_obj = new_obj;
+        }
+
+        println!(
+            "Replace acceptance commands (press Enter to keep {} criteria, or enter replacement):",
+            current_acceptance.len()
+        );
+        let replacement = prompt_line("New acceptance command (or Enter to keep): ")?;
+        if !replacement.is_empty() {
+            let mut new_acc = vec![replacement];
+            loop {
+                let next_cmd = prompt_line("Next acceptance command (or Enter to finish): ")?;
+                if next_cmd.is_empty() {
+                    break;
+                }
+                new_acc.push(next_cmd);
+            }
+            current_acceptance = new_acc;
+        }
+    };
+
+    // 6. Ingest into repository
+    let tasks_dir = repo_root.join(".vwl").join("ledger").join("tasks");
+    std::fs::create_dir_all(&tasks_dir)?;
+    let spec_file = tasks_dir.join(format!("{}.yaml", final_task.id));
+    std::fs::write(&spec_file, final_task.to_yaml()?)?;
+    println!("\nTask specification written to: {}", spec_file.display());
+
+    if admit {
+        let ledger = LocalLedger::new(repo_root)?;
+        ledger.append_task(&final_task)?;
+        println!(
+            "Task {} admitted to ledger with digest {}",
+            final_task.id,
+            final_task.compute_digest()
+        );
+
+        for dep in &dependencies {
+            let dep_record = TaskDependency::new(&final_task.id, dep, DependencyKind::Requires);
+            ledger.append_dependency(&dep_record)?;
+            println!("Recorded dependency: {} requires {}", final_task.id, dep);
         }
     }
 

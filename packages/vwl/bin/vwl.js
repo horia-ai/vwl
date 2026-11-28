@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, chmodSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, chmodSync, statSync, readdirSync } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,6 +49,9 @@ Usage: npx @horia-ai/vwl [COMMAND]
 Commands:
   bootstrap   Bootstrap repository: detect stack, configure & test static gates, install hooks and skills
   init        Initialize .vwl/gates.yaml and git pre-commit hook
+  spec        Interactive spec writing, Adversarial Skeptic grilling, and task admission (alias: grill)
+  dev         Launch developer agent loop for ready work frontier (OpenCode / Claude)
+  verifier    Launch verifier agent loop for candidate work units (Zero Implementer Chat)
   verify      Execute validator gates (e.g. 'verify precommit')
   status      Print repository and ledger status
 
@@ -64,6 +67,74 @@ install the native 'vwl' binary or compile via Cargo: cargo install --path crate
     console.log(`  Repository Root: ${cwd}`);
     console.log(`  HEAD SHA:        ${head}`);
     return 0;
+  }
+
+  if (cmd === "spec" || cmd === "grill") {
+    const sub = args[1] || "new";
+    if (sub === "list") {
+      const tasksDir = resolve(cwd, ".vwl/ledger/tasks");
+      if (!existsSync(tasksDir)) {
+        console.log("=== [VWL TASK SPECIFICATIONS] ===");
+        console.log("  (No tasks found in .vwl/ledger/tasks/)");
+        return 0;
+      }
+      const files = readdirSync(tasksDir).filter(f => f.endsWith(".yaml"));
+      console.log(`=== [VWL TASK SPECIFICATIONS] (${files.length} tasks) ===`);
+      for (const f of files) {
+        console.log(`  • ${f}`);
+      }
+      return 0;
+    }
+    if (sub === "new") {
+      let id = "";
+      let objective = "";
+      let acceptance = [];
+      let base = "";
+      let nonInteractive = false;
+      for (let i = 2; i < args.length; i++) {
+        if (args[i] === "--id" && args[i + 1]) id = args[++i];
+        else if (args[i] === "--objective" && args[i + 1]) objective = args[++i];
+        else if ((args[i] === "-a" || args[i] === "--acceptance") && args[i + 1]) acceptance.push(args[++i]);
+        else if (args[i] === "--base" && args[i + 1]) base = args[++i];
+        else if (args[i] === "--non-interactive") nonInteractive = true;
+      }
+      if (!base) {
+        const gitHead = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8", cwd });
+        base = gitHead.status === 0 ? gitHead.stdout.trim() : "unborn";
+      }
+      if (!id || !objective || acceptance.length === 0) {
+        if (nonInteractive) {
+          console.error("[Skeptic] Error: --id, --objective, and at least one --acceptance are required in non-interactive mode.");
+          return 1;
+        }
+      }
+      const subjective = ["clean code", "looks good", "feels good", "works well", "fast enough", "well tested", "high quality"];
+      for (const acc of acceptance) {
+        for (const s of subjective) {
+          if (acc.toLowerCase().includes(s)) {
+            console.error(`[Skeptic] ❌ Rejected: subjective criterion '${acc}' contains '${s}'. Must be falsifiable deterministic command.`);
+            return 1;
+          }
+        }
+      }
+      const conversational = ["as discussed", "in our chat", "like we agreed", "previous chat", "earlier discussion"];
+      for (const c of conversational) {
+        if (objective.toLowerCase().includes(c)) {
+          console.error(`[Skeptic] ❌ Rejected: conversational cue '${c}' detected in objective.`);
+          return 1;
+        }
+      }
+      const tasksDir = resolve(cwd, ".vwl/ledger/tasks");
+      mkdirSync(tasksDir, { recursive: true });
+      let yaml = `id: "${id}"\nobjective: "${objective}"\nacceptance:\n`;
+      for (const a of acceptance) yaml += `  - "${a}"\n`;
+      yaml += `base: "${base}"\n`;
+      const specPath = resolve(tasksDir, `${id}.yaml`);
+      writeFileSync(specPath, yaml);
+      console.log(`=== [SKEPTIC VERDICT: PASSED] ===`);
+      console.log(`✓ Task ${id} written to: ${specPath}`);
+      return 0;
+    }
   }
 
   if (cmd === "dev" || cmd === "developer") {
