@@ -1439,3 +1439,258 @@ fn test_cli_harness_auto_bootstrap() {
     assert!(temp.path().join(".vwl/gates.yaml").exists());
     assert!(temp.path().join(".git/hooks/pre-commit").exists());
 }
+
+#[test]
+fn test_cli_spec_new_non_interactive_valid() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let dummy_file = temp.path().join("README.md");
+    fs::write(&dummy_file, "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "spec",
+            "new",
+            "--id",
+            "SPEC-001",
+            "--objective",
+            "Implement deterministic digest hashing",
+            "-a",
+            "cargo test -p vwl-core",
+            "--non-interactive",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl spec new");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Task specification written to:"));
+    assert!(stdout.contains("SPEC-001.yaml"));
+    assert!(stdout.contains("admitted to ledger with digest"));
+
+    assert!(temp.path().join(".vwl/ledger/tasks/SPEC-001.yaml").exists());
+
+    // Verify vwl spec list
+    let list_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args(["spec", "list"])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl spec list");
+    assert!(list_output.status.success());
+    let list_stdout = String::from_utf8_lossy(&list_output.stdout);
+    assert!(list_stdout.contains("SPEC-001"));
+    assert!(list_stdout.contains("VERIFIED"));
+
+    // Verify vwl spec review
+    let review_output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "spec",
+            "review",
+            temp.path()
+                .join(".vwl/ledger/tasks/SPEC-001.yaml")
+                .to_str()
+                .unwrap(),
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl spec review");
+    assert!(review_output.status.success());
+    let review_stdout = String::from_utf8_lossy(&review_output.stdout);
+    assert!(review_stdout.contains("VERDICT: PASSED"));
+}
+
+#[test]
+fn test_cli_spec_new_non_interactive_subjective_rejection() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let dummy_file = temp.path().join("README.md");
+    fs::write(&dummy_file, "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "spec",
+            "new",
+            "--id",
+            "SPEC-BAD-01",
+            "--objective",
+            "Make code look good",
+            "-a",
+            "clean code that feels good",
+            "--non-interactive",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl spec new");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{}\n{}", stdout, stderr);
+    assert!(
+        combined.contains("Subjective/unfalsifiable criterion")
+            || combined.contains("rejected by Adversarial Skeptic")
+    );
+}
+
+#[test]
+fn test_cli_spec_new_non_interactive_conversational_cue_rejection() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let dummy_file = temp.path().join("README.md");
+    fs::write(&dummy_file, "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "spec",
+            "new",
+            "--id",
+            "SPEC-CHAT-01",
+            "--objective",
+            "Implement caching like we agreed in our chat",
+            "-a",
+            "cargo test -p vwl-core",
+            "--non-interactive",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl spec new");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{}\n{}", stdout, stderr);
+    assert!(
+        combined.contains("Conversational dependency detected")
+            || combined.contains("rejected by Adversarial Skeptic")
+    );
+}
+
+#[test]
+fn test_cli_task_new_alias() {
+    let temp = tempdir().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let dummy_file = temp.path().join("README.md");
+    fs::write(&dummy_file, "# Test Repo\n").unwrap();
+    Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(temp.path())
+        .output()
+        .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vwl"))
+        .args([
+            "task",
+            "new",
+            "--id",
+            "TASK-NEW-01",
+            "--objective",
+            "Build hashing verification",
+            "-a",
+            "cargo test -p vwl-core",
+            "--non-interactive",
+        ])
+        .current_dir(temp.path())
+        .output()
+        .expect("Failed to execute vwl task new");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("TASK-NEW-01.yaml"));
+    assert!(stdout.contains("admitted to ledger with digest"));
+}

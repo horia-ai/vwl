@@ -47,4 +47,35 @@ describe("@horia-ai/vwl NPX CLI Runner", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("executes spec new and validates falsifiable criteria in runNodeFallback", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "vwl-spec-test-"));
+    try {
+      const validStatus = runNodeFallback(
+        ["spec", "new", "--id", "NODE-TASK-1", "--objective", "Implement feature", "-a", "npm test", "--non-interactive"],
+        tempDir
+      );
+      expect(validStatus).toBe(0);
+      expect(existsSync(join(tempDir, ".vwl/ledger/tasks/NODE-TASK-1.yaml"))).toBe(true);
+
+      const listStatus = runNodeFallback(["spec", "list"], tempDir);
+      expect(listStatus).toBe(0);
+
+      // Rejects subjective
+      const subjStatus = runNodeFallback(
+        ["spec", "new", "--id", "NODE-TASK-2", "--objective", "Clean feature", "-a", "clean code", "--non-interactive"],
+        tempDir
+      );
+      expect(subjStatus).toBe(1);
+
+      // Rejects conversational
+      const convStatus = runNodeFallback(
+        ["spec", "new", "--id", "NODE-TASK-3", "--objective", "Implement as discussed in our chat", "-a", "npm test", "--non-interactive"],
+        tempDir
+      );
+      expect(convStatus).toBe(1);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
