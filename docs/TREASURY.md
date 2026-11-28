@@ -27,17 +27,17 @@ The protocol treasury wallet receives the 5% network maintenance fee. It is conf
 version: "1.0"
 network: "testnet"
 treasury:
-  wallet_address: "0xTeamTreasuryMultiSigSafe000000000000000001"
-  usdc_token_contract: "0x07865c6E87B9F70255377e024ace6630C1Eaa37F"
-  work_token_contract: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+  wallet_address: "0x0000000000000000000000000000000000000001"
+  usdc_token_contract: "0x0000000000000000000000000000000000000002"
+  work_token_contract: "0x0000000000000000000000000000000000000003"
   protocol_fee_bps: 500  # 5.00%
   min_payout_threshold_usdc: 50.00
 ```
 
 ### Environment Variable Override
 ```bash
-export VWL_TREASURY_ADDRESS="0xTeamTreasuryMultiSigSafe000000000000000001"
-export VWL_USDC_CONTRACT="0x07865c6E87B9F70255377e024ace6630C1Eaa37F"
+export VWL_TREASURY_ADDRESS="0x0000000000000000000000000000000000000001"
+export VWL_USDC_CONTRACT="0x0000000000000000000000000000000000000002"
 ```
 
 ## 4. USDC Escrow & Fiat Onramp Integration
