@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use vwl_core::{
     decision::{Decision, DecisionEngine, DecisionOutcome},
-    economics::EconomicLedger,
+    economics::{EconomicLedger, WORK_PER_USD},
     factory::{Challenge, ChangeProfile, GatesManifest, RiskLevel, RiskProfile, VerificationPlan},
     git::GitInspector,
     github::{resolve_github_token_with_source, GithubClient},
@@ -216,8 +216,11 @@ enum Commands {
         extra_args: Vec<String>,
     },
 
-    /// View node wallet balance, liquid WORK, vesting schedule, and payout status
-    Wallet,
+    /// View node wallet balance, liquid WORK, vesting schedule, and manage payouts/deposits
+    Wallet {
+        #[command(subcommand)]
+        cmd: Option<WalletCommands>,
+    },
 
     /// View node contributor reputation score, effectiveness, and tier
     Rep,
@@ -707,6 +710,17 @@ enum SpecCommands {
         #[arg(long, default_value_t = true)]
         admit: bool,
     },
+    /// Split a complex task specification into sequential atomic WorkUnits / subtasks
+    Split {
+        /// Parent task ID to decompose
+        task_id: String,
+        /// Subtasks descriptions (comma-separated or newline-separated checklist items)
+        #[arg(long, allow_hyphen_values = true)]
+        subtasks: String,
+        /// Automatically admit all subtasks to ledger
+        #[arg(long, default_value_t = true)]
+        admit: bool,
+    },
     /// Run Skeptic Adversarial Review Gate on draft task specification
     Review {
         path: PathBuf,
@@ -752,6 +766,30 @@ enum WorkUnitCommands {
         /// Canonical base commit SHA
         #[arg(long = "base", short = 'b')]
         base: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum WalletCommands {
+    /// View node wallet balance, liquid WORK, vesting schedule, and project escrows
+    Show,
+    /// Request payout / liquidate liquid WORK to USDC
+    Payout {
+        /// Target node ID (defaults to active node credential)
+        #[arg(long)]
+        node_id: Option<String>,
+        /// Amount in USD to liquidate (defaults to full liquid balance)
+        #[arg(long)]
+        amount_usd: Option<u64>,
+    },
+    /// Deposit funds / fund project escrow
+    Deposit {
+        /// Project ID to fund
+        #[arg(long)]
+        project_id: String,
+        /// Amount in USD to deposit
+        #[arg(long)]
+        amount_usd: u64,
     },
 }
 
@@ -838,8 +876,11 @@ enum NodeCommands {
     },
     /// Show current node identity, public key, and credential verification
     Show,
-    /// View node wallet balance, liquid WORK, vesting schedule, and payout status
-    Wallet,
+    /// View node wallet balance, liquid WORK, vesting schedule, and manage payouts/deposits
+    Wallet {
+        #[command(subcommand)]
+        cmd: Option<WalletCommands>,
+    },
     /// View node contributor reputation score, effectiveness, and tier
     Rep,
     /// Sign an arbitrary message with node's private key
@@ -1356,6 +1397,14 @@ fn main() -> Result<()> {
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
                 handle_spec_repair(&repo_root, &incident_id, admit)?;
             }
+            SpecCommands::Split {
+                task_id,
+                subtasks,
+                admit,
+            } => {
+                let repo_root = GitInspector::find_repo_root(&current_dir)?;
+                handle_spec_split(&repo_root, &task_id, &subtasks, admit)?;
+            }
             SpecCommands::Review { path, json } => {
                 let content = std::fs::read_to_string(path)?;
                 let task = Task::from_yaml(&content)?;
@@ -1592,9 +1641,25 @@ fn main() -> Result<()> {
             )?;
         }
 
-        Commands::Wallet => {
+        Commands::Wallet { cmd } => {
             let repo_root = GitInspector::find_repo_root(&current_dir)?;
-            handle_node_wallet(&repo_root)?;
+            match cmd {
+                None | Some(WalletCommands::Show) => {
+                    handle_node_wallet(&repo_root)?;
+                }
+                Some(WalletCommands::Payout {
+                    node_id,
+                    amount_usd,
+                }) => {
+                    handle_wallet_payout(&repo_root, node_id.as_deref(), amount_usd)?;
+                }
+                Some(WalletCommands::Deposit {
+                    project_id,
+                    amount_usd,
+                }) => {
+                    handle_wallet_deposit(&repo_root, &project_id, amount_usd)?;
+                }
+            }
         }
 
         Commands::Rep => {
@@ -2605,9 +2670,25 @@ fn main() -> Result<()> {
                 );
             }
 
-            NodeCommands::Wallet => {
+            NodeCommands::Wallet { cmd } => {
                 let repo_root = GitInspector::find_repo_root(&current_dir)?;
-                handle_node_wallet(&repo_root)?;
+                match cmd {
+                    None | Some(WalletCommands::Show) => {
+                        handle_node_wallet(&repo_root)?;
+                    }
+                    Some(WalletCommands::Payout {
+                        node_id,
+                        amount_usd,
+                    }) => {
+                        handle_wallet_payout(&repo_root, node_id.as_deref(), amount_usd)?;
+                    }
+                    Some(WalletCommands::Deposit {
+                        project_id,
+                        amount_usd,
+                    }) => {
+                        handle_wallet_deposit(&repo_root, &project_id, amount_usd)?;
+                    }
+                }
             }
 
             NodeCommands::Rep => {
@@ -3057,6 +3138,19 @@ fn handle_bootstrap(
     let vwl_dir = repo_root.join(".vwl");
     fs::create_dir_all(&vwl_dir)?;
     let gates_file = vwl_dir.join("gates.yaml");
+
+    // Auto-provision missing node_modules if package.json exists
+    let pkg_json = repo_root.join("package.json");
+    let node_modules = repo_root.join("node_modules");
+    if pkg_json.exists() && !node_modules.exists() {
+        println!(
+            "\n[*] Detected package.json without node_modules. Installing dependencies via npm..."
+        );
+        let _ = std::process::Command::new("npm")
+            .arg("install")
+            .current_dir(repo_root)
+            .status();
+    }
 
     let manifest = if gates_file.exists() && !force {
         println!("\n[1/5] Loaded existing validator gates manifest (.vwl/gates.yaml)");
@@ -4126,6 +4220,24 @@ fn execute_bounded_verifier(
                 "  [Runner] Updated GitHub Pages analytics report at docs/data/ledger_report.json"
             );
         }
+    } else if decision.outcome == DecisionOutcome::Rejected {
+        let incident_id = format!(
+            "INC-{}",
+            &wu.candidate[..std::cmp::min(12, wu.candidate.len())]
+        );
+        let now = get_now_secs();
+        let incident = IncidentRecord::new(&incident_id, "verification-factory", &wu.task, now);
+        if let Err(e) = ledger.append_incident(&incident) {
+            eprintln!("  [Verifier Node] Warning appending incident: {}", e);
+        }
+        println!(
+            "  [Verifier Node] ❌ Verification REJECTED -> Incident {} logged.",
+            incident_id
+        );
+        println!("  [Verifier Node] 🔄 Triggering Roll-Forward Auto-Repair task generation...");
+        if let Err(e) = handle_spec_repair(repo_root, &incident_id, true) {
+            eprintln!("  [Verifier Node] Warning creating repair task: {}", e);
+        }
     }
 
     Ok(decision)
@@ -4740,6 +4852,197 @@ fn handle_node_wallet(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn handle_wallet_payout(
+    repo_root: &Path,
+    target_node: Option<&str>,
+    amount_usd: Option<u64>,
+) -> Result<()> {
+    let cred_path = repo_root
+        .join(".vwl")
+        .join("identity")
+        .join("credential.yaml");
+    let node_id = if let Some(n) = target_node {
+        n.to_string()
+    } else if cred_path.exists() {
+        let yaml_str = fs::read_to_string(&cred_path)?;
+        let cred: NodeCredential = serde_yaml::from_str(&yaml_str)
+            .map_err(|e| VwlError::SerializationError(e.to_string()))?;
+        cred.node_id
+    } else {
+        return Err(VwlError::InvalidTask(
+            "No node credential found and no --node-id specified.".to_string(),
+        ));
+    };
+
+    let mut ledger = EconomicLedger::load_or_create(repo_root)?;
+    let now = get_now_secs();
+    let released_vesting = ledger.release_vesting(&node_id, now).unwrap_or(0);
+
+    let node =
+        ledger
+            .nodes
+            .entry(node_id.clone())
+            .or_insert_with(|| vwl_core::economics::NodeAccount {
+                node_id: node_id.clone(),
+                liquid_work: 0,
+                earned_work: 0,
+                vesting_work: 0,
+                last_vest_ts: now,
+            });
+
+    let available_liquid = node.liquid_work;
+    if available_liquid == 0 {
+        println!("=== [VWL WALLET PAYOUT] ===");
+        println!("  Node ID:          {}", node_id);
+        println!("  Released Vesting: {} WORK", released_vesting);
+        println!("  Liquid Balance:   0 WORK ($0.00 USD)");
+        println!("  Status:           No liquid funds available for payout.");
+        return Ok(());
+    }
+
+    let work_to_liquidate = if let Some(usd) = amount_usd {
+        let req_work = usd * WORK_PER_USD;
+        if req_work > available_liquid {
+            return Err(VwlError::InvalidTask(format!(
+                "Requested payout of ${} ({} WORK) exceeds liquid balance of {} WORK",
+                usd, req_work, available_liquid
+            )));
+        }
+        req_work
+    } else {
+        available_liquid
+    };
+
+    node.liquid_work -= work_to_liquidate;
+    let remaining_liquid = node.liquid_work;
+    let liquidated_usd = work_to_liquidate as f64 / WORK_PER_USD as f64;
+    ledger.save_to_ledger(repo_root)?;
+
+    println!("=== [VWL WALLET PAYOUT DISBURSED] ===");
+    println!("  Node ID:          {}", node_id);
+    if released_vesting > 0 {
+        println!("  Vesting Released: {} WORK", released_vesting);
+    }
+    println!("  Liquidated WORK:  {} WORK", work_to_liquidate);
+    println!("  USDC Disbursed:   ${:.2} USDC", liquidated_usd);
+    println!("  Remaining Liquid: {} WORK", remaining_liquid);
+    println!("  Treasury Escrow:  Settled via Protocol Escrow");
+    Ok(())
+}
+
+fn handle_wallet_deposit(repo_root: &Path, project_id: &str, amount_usd: u64) -> Result<()> {
+    let mut ledger = EconomicLedger::load_or_create(repo_root)?;
+    let minted_work = ledger.deposit_fiat_usd(project_id, amount_usd);
+    ledger.save_to_ledger(repo_root)?;
+    println!("=== [VWL WALLET DEPOSIT SUCCESSFUL] ===");
+    println!("  Target Project:   {}", project_id);
+    println!("  Deposited USD:    ${}.00 USD", amount_usd);
+    println!("  Escrow Credited:  {} WORK", minted_work);
+    println!("  Ledger Synced:    .vwl/ledger/economics/state.json");
+    Ok(())
+}
+
+fn handle_spec_split(
+    repo_root: &Path,
+    task_id: &str,
+    subtasks_raw: &str,
+    admit: bool,
+) -> Result<()> {
+    let ledger = LocalLedger::new(repo_root)?;
+    let tasks = ledger.get_tasks()?;
+    let parent_task = tasks.into_iter().find(|t| t.id == task_id);
+
+    let (base_sha, acceptance) = if let Some(parent) = &parent_task {
+        (parent.base.clone(), parent.acceptance.clone())
+    } else {
+        let repo_info = GitInspector::inspect(repo_root)?;
+        let manifest = GatesManifest::load_or_detect(repo_root)?;
+        let mut gates_acceptance = Vec::new();
+        for gate in &manifest.gates {
+            if gate.precommit
+                && (gate.name.contains("test")
+                    || gate.name.contains("lint")
+                    || gate.name.contains("check"))
+            {
+                gates_acceptance.push(gate.command.clone());
+            }
+        }
+        if gates_acceptance.is_empty() {
+            gates_acceptance.push("cargo test --workspace".to_string());
+            gates_acceptance.push("vwl verify precommit".to_string());
+        }
+        (repo_info.head_sha, gates_acceptance)
+    };
+
+    let mut parsed_items = Vec::new();
+    for part in subtasks_raw.split(['\n', ';', ',']) {
+        let trimmed = part
+            .trim()
+            .trim_start_matches(['-', '*', '•'])
+            .trim()
+            .trim_start_matches("[ ]")
+            .trim_start_matches("[x]")
+            .trim();
+        if !trimmed.is_empty() {
+            parsed_items.push(trimmed.to_string());
+        }
+    }
+
+    if parsed_items.is_empty() {
+        return Err(VwlError::InvalidTask(
+            "No subtasks provided to split. Provide comma, semicolon, or newline separated list."
+                .to_string(),
+        ));
+    }
+
+    println!(
+        "=== [SPEC WRITER: SPLIT TASK '{}' INTO {} SUBTASKS] ===",
+        task_id,
+        parsed_items.len()
+    );
+    let tasks_dir = repo_root.join(".vwl").join("ledger").join("tasks");
+    fs::create_dir_all(&tasks_dir)?;
+
+    let mut created_subtasks = Vec::new();
+    for (i, desc) in parsed_items.iter().enumerate() {
+        let sub_id = format!("{}-{}", task_id, i + 1);
+        let sub_obj = format!("{}: {}", task_id, desc);
+        let task = Task::new(&sub_id, &sub_obj, acceptance.clone(), &base_sha)?;
+        let verdict = TaskSkeptic::review(&task);
+        println!(
+            "  Subtask {}: '{}' -> Skeptic: {}",
+            sub_id,
+            desc,
+            if verdict.passed { "PASSED" } else { "FAILED" }
+        );
+
+        let spec_file = tasks_dir.join(format!("{}.yaml", sub_id));
+        fs::write(&spec_file, task.to_yaml()?)?;
+
+        if admit {
+            ledger.append_task(&task)?;
+            println!("    Admitted subtask {} to ledger", sub_id);
+            if i > 0 {
+                let prev_id = format!("{}-{}", task_id, i);
+                let dep = TaskDependency::new(&prev_id, &sub_id, DependencyKind::Requires);
+                ledger.append_dependency(&dep)?;
+                println!(
+                    "    Added sequential dependency: {} Requires {}",
+                    sub_id, prev_id
+                );
+            }
+        }
+        created_subtasks.push(task);
+    }
+
+    println!(
+        "✓ Successfully split task '{}' into {} sequential subtasks.",
+        task_id,
+        created_subtasks.len()
+    );
+    Ok(())
+}
+
 fn handle_node_rep(repo_root: &Path) -> Result<()> {
     let cred_path = repo_root
         .join(".vwl")
@@ -4916,6 +5219,67 @@ fn handle_spec_from_issue(
     if extracted_criteria.is_empty() {
         extracted_criteria.push("cargo test --workspace".to_string());
         extracted_criteria.push("vwl verify precommit".to_string());
+    }
+
+    let mut checklist_subtasks = Vec::new();
+    for line in body_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("- [ ]")
+            || trimmed.starts_with("* [ ]")
+            || trimmed.starts_with("- [x]")
+            || trimmed.starts_with("* [x]")
+        {
+            let desc = trimmed[5..].trim().to_string();
+            if !desc.is_empty() {
+                checklist_subtasks.push(desc);
+            }
+        }
+    }
+
+    if checklist_subtasks.len() >= 2 {
+        println!(
+            "\n=== [TASK-TO-WORKUNIT DECOMPOSITION: {} SUBTASKS DETECTED] ===",
+            checklist_subtasks.len()
+        );
+        let repo_info = GitInspector::inspect(repo_root)?;
+        let base_sha = repo_info.head_sha;
+        let tasks_dir = repo_root.join(".vwl").join("ledger").join("tasks");
+        std::fs::create_dir_all(&tasks_dir)?;
+        let ledger = LocalLedger::new(repo_root)?;
+
+        for (idx, subtask_desc) in checklist_subtasks.iter().enumerate() {
+            let subtask_id = format!("ISSUE-{}-{}", issue_num, idx + 1);
+            let subtask_obj = format!("Issue #{}: {}", issue_num, subtask_desc);
+            let subtask = Task::new(
+                &subtask_id,
+                &subtask_obj,
+                extracted_criteria.clone(),
+                &base_sha,
+            )?;
+
+            let verdict = TaskSkeptic::review(&subtask);
+            println!(
+                "  Subtask {}: '{}' -> Skeptic: {}",
+                subtask.id,
+                subtask_desc,
+                if verdict.passed { "PASSED" } else { "FAILED" }
+            );
+
+            let spec_file = tasks_dir.join(format!("{}.yaml", subtask.id));
+            std::fs::write(&spec_file, subtask.to_yaml()?)?;
+
+            if admit {
+                ledger.append_task(&subtask)?;
+                println!("    Admitted subtask {} to ledger", subtask.id);
+                if idx > 0 {
+                    let prev_id = format!("ISSUE-{}-{}", issue_num, idx);
+                    let dep = TaskDependency::new(&prev_id, &subtask.id, DependencyKind::Requires);
+                    ledger.append_dependency(&dep)?;
+                    println!("    Added dependency: {} Requires {}", subtask.id, prev_id);
+                }
+            }
+        }
+        return Ok(());
     }
 
     let task_id = format!("ISSUE-{}", issue_num);

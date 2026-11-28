@@ -118,11 +118,29 @@ describe("@horia-ai/vwl NPX CLI Runner", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "vwl-aux-test-"));
     try {
       expect(runNodeFallback(["wallet"], tempDir)).toBe(0);
+      expect(runNodeFallback(["wallet", "payout"], tempDir)).toBe(0);
+      expect(runNodeFallback(["wallet", "deposit", "--project", "test-project", "--amount", "250"], tempDir)).toBe(0);
       expect(runNodeFallback(["rep"], tempDir)).toBe(0);
 
       const ciStatus = runNodeFallback(["bootstrap", "--ci"], tempDir);
       expect(ciStatus).toBe(0);
       expect(existsSync(join(tempDir, ".github/workflows/vwl-verify.yml"))).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("executes spec split into sequential subtasks in runNodeFallback", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "vwl-split-test-"));
+    try {
+      const splitStatus = runNodeFallback(
+        ["spec", "split", "FEAT-10", "--subtasks", "- [ ] First part, - [ ] Second part, - [ ] Third part"],
+        tempDir
+      );
+      expect(splitStatus).toBe(0);
+      expect(existsSync(join(tempDir, ".vwl/ledger/tasks/FEAT-10-1.yaml"))).toBe(true);
+      expect(existsSync(join(tempDir, ".vwl/ledger/tasks/FEAT-10-2.yaml"))).toBe(true);
+      expect(existsSync(join(tempDir, ".vwl/ledger/tasks/FEAT-10-3.yaml"))).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

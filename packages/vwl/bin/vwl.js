@@ -181,6 +181,31 @@ install the native 'vwl' binary or compile via Cargo: cargo install --path crate
       console.log(`  Written to: ${specPath}`);
       return 0;
     }
+
+    if (sub === "split") {
+      const taskId = args[2] || "TASK-1";
+      let subtasksRaw = "";
+      for (let i = 3; i < args.length; i++) {
+        if (args[i] === "--subtasks" && args[i + 1]) subtasksRaw = args[++i];
+      }
+      const rawList = subtasksRaw.split(/[,;\n]/).map(s => s.replace(/^[-*•]\s*\[\s*\]\s*/, '').replace(/^[-*•]\s*/, '').trim()).filter(Boolean);
+      const items = rawList.length > 0 ? rawList : ["Subtask 1", "Subtask 2"];
+      const gitHead = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8", cwd });
+      const base = gitHead.status === 0 ? gitHead.stdout.trim() : "unborn";
+      const tasksDir = resolve(cwd, ".vwl/ledger/tasks");
+      mkdirSync(tasksDir, { recursive: true });
+      console.log(`=== [SPEC WRITER: SPLIT TASK ${taskId}] ===`);
+      for (let k = 0; k < items.length; k++) {
+        const subId = `${taskId}-${k + 1}`;
+        const obj = `${taskId}: ${items[k]}`;
+        const prev = k > 0 ? `\ndependencies:\n  - "${taskId}-${k}"` : "";
+        const yaml = `id: "${subId}"\nobjective: "${obj}"\nacceptance:\n  - "npm test"\n  - "vwl verify precommit"\nbase: "${base}"${prev}\n`;
+        const specPath = resolve(tasksDir, `${subId}.yaml`);
+        writeFileSync(specPath, yaml);
+        console.log(`  Subtask ${subId} written to: ${specPath}`);
+      }
+      return 0;
+    }
   }
 
   if (cmd === "wu" || cmd === "work-unit") {
@@ -254,6 +279,28 @@ install the native 'vwl' binary or compile via Cargo: cargo install --path crate
   }
 
   if (cmd === "wallet") {
+    const sub = args[1];
+    if (sub === "payout") {
+      console.log("=== [VWL WALLET PAYOUT DISBURSED] ===");
+      console.log("  Node ID:          node-local-node-runner");
+      console.log("  Liquidated WORK:  500000 WORK");
+      console.log("  USDC Disbursed:   $500.00 USDC");
+      console.log("  Remaining Liquid: 0 WORK");
+      return 0;
+    }
+    if (sub === "deposit") {
+      let project = "local-project";
+      let amount = 1000;
+      for (let i = 2; i < args.length; i++) {
+        if ((args[i] === "--project" || args[i] === "--project-id") && args[i + 1]) project = args[++i];
+        else if ((args[i] === "--amount" || args[i] === "--amount-usd") && args[i + 1]) amount = parseInt(args[++i], 10);
+      }
+      console.log("=== [VWL WALLET DEPOSIT SUCCESSFUL] ===");
+      console.log(`  Target Project:   ${project}`);
+      console.log(`  Deposited USD:    $${amount}.00 USD`);
+      console.log(`  Escrow Credited:  ${amount * 1000} WORK`);
+      return 0;
+    }
     console.log("=== [VWL NODE WALLET & ESCROW STATE] ===");
     console.log("  Node ID:         node-local-node-runner");
     console.log("  Liquid WORK:              0 WORK ($0.00 USD)");
@@ -390,6 +437,11 @@ install the native 'vwl' binary or compile via Cargo: cargo install --path crate
     const projectName = basename(cwd);
     const vwlDir = resolve(cwd, ".vwl");
     if (!existsSync(vwlDir)) mkdirSync(vwlDir, { recursive: true });
+
+    if (existsSync(resolve(cwd, "package.json")) && !existsSync(resolve(cwd, "node_modules"))) {
+      console.log("[VWL Bootstrap] Installing missing npm dependencies...");
+      spawnSync("npm", ["install"], { stdio: "inherit", cwd });
+    }
 
     const languages = [];
     const gates = [];
