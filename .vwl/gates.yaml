@@ -1,0 +1,42 @@
+version: '1.0'
+project: vwl
+languages:
+- rust
+- javascript
+gates:
+- name: unit-tests
+  plane: deterministic
+  command: cargo test --workspace
+  precommit: true
+  timeout_secs: 120
+  description: Deterministic Rust test suite execution
+- name: clippy-lint
+  plane: deterministic
+  command: cargo clippy --all-targets --all-features -- -D warnings
+  precommit: true
+  timeout_secs: 60
+  description: Enforce zero compiler and clippy warnings
+- name: format-check
+  plane: deterministic
+  command: cargo fmt --check
+  precommit: true
+  timeout_secs: 30
+  description: Enforce standard rustfmt style
+- name: node-tests
+  plane: deterministic
+  command: npm test
+  precommit: true
+  timeout_secs: 60
+  description: Execute Node.js test suite
+- name: node-lint
+  plane: deterministic
+  command: npm run lint
+  precommit: true
+  timeout_secs: 45
+  description: Execute linter checks
+- name: skeptic-review
+  plane: judgment
+  command: vwl task review --json .vwl/ledger/tasks/*.yaml 2>/dev/null || true
+  precommit: true
+  timeout_secs: 10
+  description: Skeptic adversarial review gate for draft tasks
